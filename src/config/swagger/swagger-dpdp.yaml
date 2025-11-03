@@ -1,0 +1,866 @@
+swagger: '2.0'
+info:
+  title: DPDP Consent Management System API
+  description: |
+    Comprehensive API documentation for the DPDP Consent Management System (CMS).
+    This API enables organizations to manage user consent, handle data subject rights,
+    and maintain compliance with the Digital Personal Data Protection (DPDP) Act, 2023.
+    
+    ## Key Features
+    - Consent capture and management
+    - Data subject rights requests (access, rectification, erasure)
+    - Comprehensive audit logging
+    - User authentication and authorization
+    
+  version: 1.0.0
+  contact:
+    name: Aurelion Future Forge Private Limited
+    email: support@aurelionfutureforge.com
+  license:
+    name: ISC
+basePath: /api/v1
+host: localhost:8001
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Login user with phone number
+      description: Start authentication process with phone number
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/PhoneNumber'
+      responses:
+        200:
+          description: OTP sent successfully
+          schema:
+            type: object
+            properties:
+              otp_id:
+                type: string
+        400:
+          description: Invalid phone number
+
+  /auth/verify-otp:
+    post:
+      tags:
+        - Auth
+      summary: Verify OTP
+      description: Verify the OTP sent to user
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/VerifyOtp'
+      responses:
+        200:
+          description: OTP verified successfully
+        400:
+          description: Invalid OTP
+
+  /auth/resend-otp:
+    post:
+      tags:
+        - Auth
+      summary: Resend OTP
+      description: Resend OTP to user
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/OtpRequest'
+      responses:
+        200:
+          description: OTP sent successfully
+        400:
+          description: Invalid request
+
+  /auth/refresh-token:
+    post:
+      tags:
+        - Auth
+      summary: Refresh Token
+      description: Get new access token using refresh token
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/RefreshToken'
+      responses:
+        200:
+          description: Token refreshed successfully
+        401:
+          description: Invalid refresh token
+
+  /users/{user_id}/exist:
+    get:
+      tags:
+        - Users
+      summary: Check if user exists
+      description: Check if a user exists by ID
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          type: string
+      responses:
+        200:
+          description: User exists
+        404:
+          description: User not found
+
+  /users/{user_id}:
+    get:
+      tags:
+        - Users
+      summary: Get user details
+      description: Get user details by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          type: string
+      responses:
+        200:
+          description: User details retrieved successfully
+          schema:
+            $ref: '#/definitions/UserResponse'
+        401:
+          description: Unauthorized
+        404:
+          description: User not found
+
+  /users:
+    put:
+      tags:
+        - Users
+      summary: Update user
+      description: Update user details
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/UserUpdate'
+      responses:
+        200:
+          description: User updated successfully
+          schema:
+            $ref: '#/definitions/UserResponse'
+        400:
+          description: Invalid input
+        401:
+          description: Unauthorized
+        404:
+          description: User not found
+
+  # Consent Management Endpoints
+  /consent:
+    post:
+      tags:
+        - Consent
+      summary: Create consent record
+      description: Capture and store user consent for data processing
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ConsentRequest'
+      responses:
+        201:
+          description: Consent created successfully
+          schema:
+            $ref: '#/definitions/ConsentResponse'
+        400:
+          description: Invalid input
+        401:
+          description: Unauthorized
+    get:
+      tags:
+        - Consent
+      summary: Get user consent records
+      description: Retrieve all consent records for the authenticated user
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: purpose
+          type: string
+          description: Filter by purpose of processing
+        - in: query
+          name: status
+          type: string
+          enum: [ACTIVE, WITHDRAWN, EXPIRED]
+          description: Filter by consent status
+        - in: query
+          name: page
+          type: integer
+          default: 1
+          description: Page number for pagination
+        - in: query
+          name: limit
+          type: integer
+          default: 20
+          description: Number of records per page
+      responses:
+        200:
+          description: Consent records retrieved successfully
+          schema:
+            $ref: '#/definitions/ConsentListResponse'
+        401:
+          description: Unauthorized
+
+  /consent/{consent_id}:
+    get:
+      tags:
+        - Consent
+      summary: Get consent record by ID
+      description: Retrieve a specific consent record
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: consent_id
+          required: true
+          type: string
+          description: Consent record ID
+      responses:
+        200:
+          description: Consent record retrieved successfully
+          schema:
+            $ref: '#/definitions/ConsentResponse'
+        401:
+          description: Unauthorized
+        404:
+          description: Consent record not found
+    put:
+      tags:
+        - Consent
+      summary: Update consent record
+      description: Update an existing consent record
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: consent_id
+          required: true
+          type: string
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ConsentUpdate'
+      responses:
+        200:
+          description: Consent updated successfully
+          schema:
+            $ref: '#/definitions/ConsentResponse'
+        400:
+          description: Invalid input
+        401:
+          description: Unauthorized
+        404:
+          description: Consent record not found
+    delete:
+      tags:
+        - Consent
+      summary: Withdraw consent
+      description: Withdraw user consent (DPDP Act compliant)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: consent_id
+          required: true
+          type: string
+      responses:
+        200:
+          description: Consent withdrawn successfully
+          schema:
+            $ref: '#/definitions/ConsentResponse'
+        401:
+          description: Unauthorized
+        404:
+          description: Consent record not found
+
+  # Data Subject Rights Endpoints
+  /data-subject/access-request:
+    post:
+      tags:
+        - Data Subject Rights
+      summary: Request access to personal data
+      description: Submit a request to access personal data (DPDP Act Section 11)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/AccessRequest'
+      responses:
+        201:
+          description: Access request created successfully
+          schema:
+            $ref: '#/definitions/DataSubjectRequestResponse'
+        400:
+          description: Invalid input
+        401:
+          description: Unauthorized
+
+  /data-subject/rectification-request:
+    post:
+      tags:
+        - Data Subject Rights
+      summary: Request data rectification
+      description: Submit a request to correct inaccurate personal data (DPDP Act Section 12)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/RectificationRequest'
+      responses:
+        201:
+          description: Rectification request created successfully
+          schema:
+            $ref: '#/definitions/DataSubjectRequestResponse'
+        400:
+          description: Invalid input
+        401:
+          description: Unauthorized
+
+  /data-subject/erasure-request:
+    post:
+      tags:
+        - Data Subject Rights
+      summary: Request data erasure
+      description: Submit a request to erase personal data (DPDP Act Section 13)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ErasureRequest'
+      responses:
+        201:
+          description: Erasure request created successfully
+          schema:
+            $ref: '#/definitions/DataSubjectRequestResponse'
+        400:
+          description: Invalid input
+        401:
+          description: Unauthorized
+
+  /data-subject/requests:
+    get:
+      tags:
+        - Data Subject Rights
+      summary: Get data subject requests
+      description: Retrieve all data subject rights requests for the authenticated user
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: type
+          type: string
+          enum: [ACCESS, RECTIFICATION, ERASURE]
+          description: Filter by request type
+        - in: query
+          name: status
+          type: string
+          enum: [PENDING, PROCESSING, COMPLETED, REJECTED]
+          description: Filter by request status
+        - in: query
+          name: page
+          type: integer
+          default: 1
+        - in: query
+          name: limit
+          type: integer
+          default: 20
+      responses:
+        200:
+          description: Requests retrieved successfully
+          schema:
+            $ref: '#/definitions/DataSubjectRequestListResponse'
+        401:
+          description: Unauthorized
+
+  /data-subject/requests/{request_id}:
+    get:
+      tags:
+        - Data Subject Rights
+      summary: Get data subject request by ID
+      description: Retrieve details of a specific data subject rights request
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: request_id
+          required: true
+          type: string
+      responses:
+        200:
+          description: Request retrieved successfully
+          schema:
+            $ref: '#/definitions/DataSubjectRequestResponse'
+        401:
+          description: Unauthorized
+        404:
+          description: Request not found
+
+  # Audit & Logging Endpoints
+  /audit/logs:
+    get:
+      tags:
+        - Audit
+      summary: Get audit logs
+      description: Retrieve audit logs for data processing activities (Admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: user_id
+          type: string
+          description: Filter by user ID
+        - in: query
+          name: action
+          type: string
+          enum: [CONSENT_CREATED, CONSENT_UPDATED, CONSENT_WITHDRAWN, DATA_ACCESSED, DATA_UPDATED, DATA_DELETED]
+          description: Filter by action type
+        - in: query
+          name: start_date
+          type: string
+          format: date-time
+          description: Start date for filtering
+        - in: query
+          name: end_date
+          type: string
+          format: date-time
+          description: End date for filtering
+        - in: query
+          name: page
+          type: integer
+          default: 1
+        - in: query
+          name: limit
+          type: integer
+          default: 50
+      responses:
+        200:
+          description: Audit logs retrieved successfully
+          schema:
+            $ref: '#/definitions/AuditLogListResponse'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden (Admin access required)
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check API health status
+      responses:
+        200:
+          description: API is healthy
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "ok"
+              timestamp:
+                type: string
+                format: date-time
+
+securityDefinitions:
+  BearerAuth:
+    type: apiKey
+    name: Authorization
+    in: header
+    description: |
+      JWT Bearer Token Authentication. 
+      Format: "Bearer {token}"
+
+tags:
+  - name: Auth
+    description: Authentication and authorization endpoints
+  - name: Users
+    description: User profile management endpoints
+  - name: Consent
+    description: Consent management endpoints for DPDP Act compliance
+  - name: Data Subject Rights
+    description: Data subject rights requests (access, rectification, erasure)
+  - name: Audit
+    description: Audit logging and compliance tracking
+  - name: Health
+    description: System health and status endpoints
+
+schemes:
+  - http
+  - https
+
+definitions:
+  CmsUser:
+    type: object
+    properties:
+      name:
+        type: string
+      email:
+        type: string
+      password:
+        type: string
+      role:
+        type: string
+        enum: [SUPER_ADMIN, ADMIN, PRODUCT_ADMIN]
+  
+  PhoneNumber:
+    type: object
+    required:
+      - phone_number
+    properties:
+      phone_number:
+        type: string
+        minLength: 10
+        maxLength: 15
+        pattern: '^[0-9]+$'
+        description: Mobile number must be between 10-15 digits
+
+  OtpRequest:
+    type: object
+    required:
+      - otp_id
+    properties:
+      otp_id:
+        type: string
+
+  VerifyOtp:
+    type: object
+    required:
+      - otp_id
+      - otp
+    properties:
+      otp_id:
+        type: string
+      otp:
+        type: string
+        pattern: '^[0-9]{6}$'
+        description: Must be exactly 6 digits
+
+  UserUpdate:
+    type: object
+    required:
+      - name
+    properties:
+      name:
+        type: string
+      profile_image_url:
+        type: string
+      upi_id:
+        type: string
+        pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+$'
+        description: UPI ID in valid format
+      location:
+        type: string
+      date_of_birth:
+        type: string
+        format: date
+        description: ISO 8601 date string
+      bio:
+        type: string
+
+  RefreshToken:
+    type: object
+    required:
+      - refresh_token
+    properties:
+      refresh_token:
+        type: string
+        minLength: 1
+        description: Valid refresh token
+
+  UserResponse:
+    type: object
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      email:
+        type: string
+      profile_image_url:
+        type: string
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+
+  ConsentRequest:
+    type: object
+    required:
+      - purpose
+      - consent_given
+    properties:
+      purpose:
+        type: string
+        description: Purpose of data processing
+        example: "marketing"
+      purpose_description:
+        type: string
+        description: Detailed description of the purpose
+      consent_given:
+        type: boolean
+        description: Whether user has given consent
+      data_categories:
+        type: array
+        items:
+          type: string
+        description: Categories of personal data being processed
+        example: ["name", "email", "phone"]
+      retention_period:
+        type: integer
+        description: Data retention period in days
+      third_party_sharing:
+        type: boolean
+        description: Whether data will be shared with third parties
+      third_parties:
+        type: array
+        items:
+          type: string
+        description: List of third parties if sharing is enabled
+
+  ConsentUpdate:
+    type: object
+    properties:
+      consent_given:
+        type: boolean
+      purpose_description:
+        type: string
+      retention_period:
+        type: integer
+
+  ConsentResponse:
+    type: object
+    properties:
+      id:
+        type: string
+      user_id:
+        type: string
+      purpose:
+        type: string
+      purpose_description:
+        type: string
+      consent_given:
+        type: boolean
+      consent_withdrawn_at:
+        type: string
+        format: date-time
+      data_categories:
+        type: array
+        items:
+          type: string
+      retention_period:
+        type: integer
+      expires_at:
+        type: string
+        format: date-time
+      status:
+        type: string
+        enum: [ACTIVE, WITHDRAWN, EXPIRED]
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+
+  ConsentListResponse:
+    type: object
+    properties:
+      data:
+        type: array
+        items:
+          $ref: '#/definitions/ConsentResponse'
+      pagination:
+        $ref: '#/definitions/Pagination'
+
+  AccessRequest:
+    type: object
+    required:
+      - request_reason
+    properties:
+      request_reason:
+        type: string
+        description: Reason for requesting access
+      data_categories:
+        type: array
+        items:
+          type: string
+        description: Specific data categories to access (optional, all if not specified)
+
+  RectificationRequest:
+    type: object
+    required:
+      - field_name
+      - current_value
+      - corrected_value
+      - reason
+    properties:
+      field_name:
+        type: string
+        description: Name of the field to be corrected
+        example: "email"
+      current_value:
+        type: string
+        description: Current (incorrect) value
+      corrected_value:
+        type: string
+        description: Corrected value
+      reason:
+        type: string
+        description: Reason for correction
+
+  ErasureRequest:
+    type: object
+    required:
+      - reason
+    properties:
+      reason:
+        type: string
+        description: Reason for requesting data erasure
+      data_categories:
+        type: array
+        items:
+          type: string
+        description: Specific data categories to erase (optional, all if not specified)
+
+  DataSubjectRequestResponse:
+    type: object
+    properties:
+      id:
+        type: string
+      user_id:
+        type: string
+      request_type:
+        type: string
+        enum: [ACCESS, RECTIFICATION, ERASURE]
+      status:
+        type: string
+        enum: [PENDING, PROCESSING, COMPLETED, REJECTED]
+      details:
+        type: object
+        description: Request-specific details
+      submitted_at:
+        type: string
+        format: date-time
+      completed_at:
+        type: string
+        format: date-time
+      response:
+        type: object
+        description: Response data (for completed requests)
+
+  DataSubjectRequestListResponse:
+    type: object
+    properties:
+      data:
+        type: array
+        items:
+          $ref: '#/definitions/DataSubjectRequestResponse'
+      pagination:
+        $ref: '#/definitions/Pagination'
+
+  AuditLog:
+    type: object
+    properties:
+      id:
+        type: string
+      user_id:
+        type: string
+      action:
+        type: string
+        enum: [CONSENT_CREATED, CONSENT_UPDATED, CONSENT_WITHDRAWN, DATA_ACCESSED, DATA_UPDATED, DATA_DELETED]
+      resource_type:
+        type: string
+      resource_id:
+        type: string
+      details:
+        type: object
+        description: Additional action details
+      ip_address:
+        type: string
+      user_agent:
+        type: string
+      created_at:
+        type: string
+        format: date-time
+
+  AuditLogListResponse:
+    type: object
+    properties:
+      data:
+        type: array
+        items:
+          $ref: '#/definitions/AuditLog'
+      pagination:
+        $ref: '#/definitions/Pagination'
+
+  Pagination:
+    type: object
+    properties:
+      page:
+        type: integer
+      limit:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+      has_next:
+        type: boolean
+      has_prev:
+        type: boolean
+
+  Error:
+    type: object
+    properties:
+      error:
+        type: string
+        description: Error message
+      code:
+        type: string
+        description: Error code
+      details:
+        type: object
+        description: Additional error details
