@@ -1,9 +1,497 @@
+// =======================
+//  GENERATOR & DATASOURCE
+// =======================
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// =======================
+//  ENUMS
+// =======================
+enum ConsentStatus {
+  PENDING
+  ACTIVE
+  WITHDRAWN
+  EXPIRED
+}
+
+enum ConsentAction {
+  GRANT
+  UPDATE
+  WITHDRAW
+  EXPIRE
+  VALIDATE
+}
+
+enum GrievanceStatus {
+  SUBMITTED
+  IN_PROGRESS
+  RESOLVED
+  ESCALATED
+  CLOSED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  PUSH
+  WEBHOOK
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  VALIDATE
+  NOTIFY
+  LOGIN
+  SYSTEM
+}
+
+enum Role {
+  ADMIN
+  DPO
+  AUDITOR
+  SYSTEM
+}
+
+// =======================
+//  CORE ENTITIES
+// =======================
+
+model DataPrincipal {
+  data_principal_id String  @id @default(uuid())
+  external_id       String? @unique // Client system ID
+  email             String? @unique
+  phone             String? @unique
+  language          String  @default("en")
+
+  // Lifecycle
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  last_login DateTime?
+  is_deleted Boolean   @default(false)
+  deleted_at DateTime?
+
+  // Relations
+  mappings   PrincipalFiduciaryMap[]
+  consents   ConsentArtifact[]
+  grievances Grievance[]
+  auditLogs  AuditLog[]              @relation("principal_auditlogs")
+}
+
+model DataFiduciary {
+  data_fiduciary_id String @id @default(uuid())
+  name              String
+
+  legal_name          String
+  registration_number String? @unique
+
+  // Contact
+  contact_email String
+  contact_phone String?
+  dpo_email     String?
+  dpo_phone     String?
+  website_url   String?
+
+  // API Configuration
+  api_key        String  @unique
+  api_secret     String // Hashed
+  webhook_url    String?
+  webhook_secret String? // For signature verification
+  callback_url   String?
+
+  // Rate Limiting
+  rate_limit_per_min Int @default(1000)
+  rate_limit_per_day Int @default(100000)
+
+  // Settings
+  is_public  Boolean @default(true)
+  is_active  Boolean @default(true)
+  is_deleted Boolean @default(false)
+
+  // Branding (for white-label)
+  logo_url String?
+
+  // Compliance
+  privacy_policy_url String?
+  terms_url          String?
+  gdpr_compliant     Boolean @default(false)
+  dpdp_compliant     Boolean @default(true)
+
+  // Lifecycle
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  last_api_call DateTime?
+
+  // Relations
+  mappings                PrincipalFiduciaryMap[]
+  purposes                Purpose[]
+  consents                ConsentArtifact[]
+  grievances              Grievance[]
+  notifications           Notification[]
+  retention_policies      RetentionPolicy[]
+  alert                   Alert[]
+  data_protection_officer DataProtectionOfficer[]
+  webhook_logs            WebhookLog[]
+}
+
+// =======================
+//  CONSENT ENTITIES
+// =======================
+model PrincipalFiduciaryMap {
+  principal_fiduciary_map_id String @id @default(uuid())
+  data_fiduciary_id          String
+  principal_id               String
+  external_ref               String
+
+  fiduciary DataFiduciary     @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+  principal DataPrincipal     @relation(fields: [principal_id], references: [data_principal_id])
+  consents  ConsentArtifact[]
+
+  @@unique([data_fiduciary_id, external_ref])
+}
+
+model PurposeCategory {
+  purpose_category_id String   @id @default(uuid())
+  name                String   @unique
+  description         String?
+  icon                String?
+  display_order       Int      @default(0)
+  is_active           Boolean  @default(true)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  purposes Purpose[]
+
+  @@index([is_active, display_order])
+  @@map("purpose_categories")
+}
+
+model Purpose {
+  purpose_id          String  @id @default(uuid())
+  data_fiduciary_id   String
+  purpose_category_id String?
+
+  // Purpose Details
+  title       String
+  description String?
+  legal_basis String? // DPDP Act reference
+
+  // Data Handling
+  data_fields           String[] // Which fields are collected
+  processing_activities String[]
+  retention_period_days Int?
+
+  // Settings
+  is_mandatory        Boolean @default(false)
+  is_active           Boolean @default(true)
+  requires_renewal    Boolean @default(false)
+  renewal_period_days Int?
+
+  // Display
+  display_order Int      @default(0)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  category PurposeCategory? @relation(fields: [purpose_category_id], references: [purpose_category_id])
+
+  fiduciary    DataFiduciary        @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+  translations PurposeTranslation[]
+
+  purpose_version PurposeVersion[]
+}
+
+model PurposeVersion {
+  purpose_version_id String @id @default(uuid())
+  purpose_id         String
+  version_number     Int    @default(1)
+
+  title         String
+  description   String?
+  language_code String? @default("en")
+
+  // Version Control
+  is_current    Boolean   @default(true)
+  created_at    DateTime  @default(now())
+  published_at  DateTime  @default(now())
+  deprecated_at DateTime?
+
+  purpose  Purpose           @relation(fields: [purpose_id], references: [purpose_id])
+  consents ConsentArtifact[]
+
+  @@unique([purpose_id, version_number])
+}
+
+model PurposeTranslation {
+  purpose_translation_id String  @id @default(uuid())
+  purpose_id             String
+  language_code          String
+  title                  String
+  description            String?
+
+  purpose Purpose @relation(fields: [purpose_id], references: [purpose_id])
+
+  @@unique([purpose_id, language_code])
+}
+
+model ConsentArtifact {
+  consent_artifact_id        String  @id @default(uuid())
+  data_fiduciary_id          String
+  data_principal_id          String
+  purpose_id                 String
+  purpose_version_id         String
+  principal_fiduciary_map_id String?
+
+  // Consent State
+  status ConsentStatus @default(PENDING)
+
+  // Timestamps
+  requested_at      DateTime  @default(now())
+  granted_at        DateTime?
+  updated_at        DateTime?
+  expires_at        DateTime?
+  withdrawn_at      DateTime?
+  last_validated_at DateTime?
+
+  // Metadata
+  metadata          Json?
+  consent_text_hash String? // Hash of consent text shown
+
+  // Soft Delete
+  is_deleted Boolean   @default(false)
+  deleted_at DateTime?
+
+  fiduciary       DataFiduciary  @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+  principal       DataPrincipal  @relation(fields: [data_principal_id], references: [data_principal_id])
+  purpose_version PurposeVersion @relation(fields: [purpose_version_id], references: [purpose_version_id])
+
+  history                 ConsentHistory[]
+  validations             ConsentValidation[]
+  audit_logs              AuditLog[]             @relation("consent_auditlogs")
+  principal_fiduciary_map PrincipalFiduciaryMap? @relation(fields: [principal_fiduciary_map_id], references: [principal_fiduciary_map_id])
+  alert                   Alert[]
+
+  @@index([data_fiduciary_id, data_principal_id, purpose_id])
+}
+
+model ConsentHistory {
+  consent_history_id  String @id @default(uuid())
+  consent_artifact_id String
+
+  action ConsentAction
+
+  // Action Details
+  previous_status ConsentStatus?
+  new_status      ConsentStatus?
+
+  // Actor
+  performed_by      String? // user_id or 'system'
+  performed_by_type String? // principal, guardian, system, admin
+
+  // Context
+  performed_at DateTime @default(now())
+  notes        String?
+
+  consent_artifact ConsentArtifact @relation(fields: [consent_artifact_id], references: [consent_artifact_id])
+}
+
+model ConsentValidation {
+  consent_validation_id String @id @default(uuid())
+  consent_artifact_id   String
+
+  // Validation Request
+  requested_by      String? // API key or system
+  purpose_requested String?
+
+  // Validation Result
+  is_valid Boolean
+
+  // Performance
+  response_time_ms Int?
+  cache_hit        Boolean @default(false)
+
+  // Context
+  validated_at DateTime @default(now())
+  validated_by String?
+
+  // Remarks
+  remarks String?
+
+  consent_artifact ConsentArtifact @relation(fields: [consent_artifact_id], references: [consent_artifact_id])
+}
+
+// =======================
+//  NOTIFICATIONS & WEBHOOKS
+// ======================
+
+model Notification {
+  notification_id   String              @id @default(uuid())
+  data_fiduciary_id String
+  channel           NotificationChannel
+  message           String
+  sent_at           DateTime?
+  status            String?
+  retry_count       Int                 @default(0)
+
+  fiduciary DataFiduciary @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+}
+
+model Alert {
+  alert_id            String    @id @default(uuid())
+  data_fiduciary_id   String
+  consent_artifact_id String
+  event_type          String
+  payload             Json
+  status              String    @default("PENDING")
+  attempts            Int       @default(0)
+  lastAttempt         DateTime?
+  created_at          DateTime  @default(now())
+
+  fiduciary        DataFiduciary   @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+  consent_artifact ConsentArtifact @relation(fields: [consent_artifact_id], references: [consent_artifact_id])
+  processor_acks   ProcessorAck[]
+}
+
+model ProcessorAck {
+  processor_ack_id String   @id @default(uuid())
+  alert_id         String
+  acknowledged_at  DateTime @default(now())
+  response         Json?
+
+  alert Alert @relation(fields: [alert_id], references: [alert_id])
+}
+
+model WebhookLog {
+  webhook_log_id    String   @id @default(uuid())
+  data_fiduciary_id String
+  
+  // Request
+  event_type        String
+  webhook_url       String
+  method            String   @default("POST")
+  headers           Json?
+  payload           Json
+  signature         String?
+  
+  // Response
+  status_code       Int?
+  response_body     String?
+  response_time_ms  Int?
+  
+  // Result
+  success           Boolean  @default(false)
+  error_message     String?
+  
+  // Timestamps
+  created_at        DateTime @default(now())
+  
+  fiduciary DataFiduciary @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+
+  @@index([data_fiduciary_id])
+  @@index([created_at])
+  @@index([success])
+  @@map("webhook_logs")
+}
+
+// =======================
+//  GRIEVANCES
+// =======================
+
+model Grievance {
+  grievance_id      String          @id @default(uuid())
+  data_principal_id String
+  data_fiduciary_id String
+  category          String
+  description       String
+  evidence_urls     String[]
+  status            GrievanceStatus @default(SUBMITTED)
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+
+  principal DataPrincipal     @relation(fields: [data_principal_id], references: [data_principal_id])
+  fiduciary DataFiduciary     @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+  actions   GrievanceAction[]
+}
+
+model GrievanceAction {
+  grievance_action_id String   @id @default(uuid())
+  grievance_id        String
+  action_taken        String
+  notes               String?
+  performed_by        String?
+  performed_at        DateTime @default(now())
+
+  grievance Grievance @relation(fields: [grievance_id], references: [grievance_id])
+}
+
+// =======================
+//  RETENTION & POLICY
+// =======================
+
+model RetentionPolicy {
+  retention_policy_id String   @id @default(uuid())
+  data_fiduciary_id   String
+  target_type         String
+  retention_days      Int
+  is_active           Boolean  @default(true)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  fiduciary DataFiduciary @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+}
+
+// =======================
+//  AUDIT & SECURITY
+// =======================
+
+model AuditLog {
+  audit_log_id        String         @id @default(uuid()) // Log ID
+  user_id             String? // Data Principal reference
+  purpose_id          String? // Purpose linked to consent action
+  consent_artifact_id String? // Consent artifact ID
+  action              AuditAction // Action type: GRANT / WITHDRAW / etc.
+  timestamp           DateTime       @default(now()) // Time of action
+  consent_status      ConsentStatus? // Current status of consent
+  initiator           String? // "USER", "SYSTEM", or "FIDUCIARY"
+  source_ip           String? // IP of request initiator
+  audit_hash          String // Cryptographic hash
+  verified            Boolean        @default(false) // Verification flag
+  details             Json? // Any extra payload (optional)
+  created_at          DateTime       @default(now())
+
+  // Relations
+  principal        DataPrincipal?   @relation("principal_auditlogs", fields: [user_id], references: [data_principal_id])
+  consent_artifact ConsentArtifact? @relation("consent_auditlogs", fields: [consent_artifact_id], references: [consent_artifact_id])
+}
+
+// =======================
+//  ADMIN / AUTH
+// =======================
+
+model User {
+  user_id    String    @id @default(uuid())
+  name       String
+  email      String    @unique
+  role       Role      @default(ADMIN)
+  is_deleted Boolean   @default(false)
+  deleted_at DateTime?
+  is_active  Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+}
+
+model DataProtectionOfficer {
+  dpo_id            String  @id @default(uuid())
+  name              String
+  email             String  @unique
+  data_fiduciary_id String
+  is_active         Boolean @default(true)
+
+  fiduciary DataFiduciary @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
 }
