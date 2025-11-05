@@ -42,21 +42,6 @@ const createTransporter = (): nodemailer.Transporter => {
     debug: env.NODE_ENV === "development",
   };
 
-  // For development, use ethereal email for testing
-  if (env.NODE_ENV === "development") {
-    transporterInstance = nodemailer.createTransport({
-      host: "smtp.ethereal.email",
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.EMAIL_USER || "test@ethereal.email",
-        pass: process.env.EMAIL_PASS || "test",
-      },
-      ...connectionOptions,
-    });
-    return transporterInstance;
-  }
-
   // For production, validate and use actual SMTP settings
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     throw new Error(
