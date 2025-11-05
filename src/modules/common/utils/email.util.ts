@@ -21,14 +21,33 @@ interface EmailOptions {
 
 console.log(process.env.EMAIL_FROM)
 
+// Cache transporter instance to reuse connections
+let transporterInstance: nodemailer.Transporter | null = null;
+
 /**
  * Create a transporter for sending emails
  */
-const createTransporter = () => {
+const createTransporter = (): nodemailer.Transporter => {
+  // Return cached instance if available
+  if (transporterInstance) {
+    return transporterInstance;
+  }
+
+  // Common connection timeout options (in milliseconds)
+  const connectionOptions = {
+    connectionTimeout: 60000, // 60 seconds for initial connection
+    greetingTimeout: 30000,    // 30 seconds for SMTP greeting
+    socketTimeout: 60000,      // 60 seconds for socket operations
+    // Additional options for better reliability
+    requireTLS: false,
+    logger: env.NODE_ENV === "development",
+    debug: env.NODE_ENV === "development",
+  };
+
   // For development, use ethereal email or console log
   if (env.NODE_ENV === "development") {
     // You can use ethereal.email for testing in development
-    return nodemailer.createTransport({
+    transporterInstance = nodemailer.createTransport({
       host: "smtp.ethereal.email",
       port: 587,
       secure: false,
@@ -36,11 +55,20 @@ const createTransporter = () => {
         user: process.env.EMAIL_USER || "test@ethereal.email",
         pass: process.env.EMAIL_PASS || "test",
       },
+      ...connectionOptions,
     });
+    return transporterInstance;
+  }
+
+  // Validate production credentials
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    throw new Error(
+      "❌ Missing email credentials: EMAIL_USER and EMAIL_PASS must be set in production"
+    );
   }
 
   // For production, use actual SMTP settings
-  return nodemailer.createTransport({
+  transporterInstance = nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.gmail.com",
     port: parseInt(process.env.SMTP_PORT || "587"),
     secure: process.env.SMTP_SECURE === "true",
@@ -48,7 +76,10 @@ const createTransporter = () => {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
+    ...connectionOptions,
   });
+
+  return transporterInstance;
 };
 
 /**
@@ -59,6 +90,14 @@ const createTransporter = () => {
 export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
   try {
     const transporter = createTransporter();
+
+    // Verify connection before sending (optional but helps catch issues early)
+    try {
+      await transporter.verify();
+    } catch (verifyError) {
+      console.error("❌ SMTP connection verification failed:", verifyError);
+      // Don't throw here, still try to send (some servers don't support verify)
+    }
 
     const mailOptions = {
       from: process.env.EMAIL_FROM || "DPDP CMS <noreply@dpdp.com>",
@@ -76,8 +115,29 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
     }
 
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error("❌ Error sending email:", error);
+    
+    // Log more detailed error information
+    if (error.code === "ETIMEDOUT" || error.code === "ECONNREFUSED") {
+      console.error(
+        `❌ SMTP Connection Error: ${error.code}\n` +
+        `   Host: ${process.env.SMTP_HOST || "smtp.gmail.com"}\n` +
+        `   Port: ${process.env.SMTP_PORT || "587"}\n` +
+        `   Check: 1) SMTP server is reachable, 2) Firewall rules, 3) Network connectivity`
+      );
+    } else if (error.code === "EAUTH") {
+      console.error(
+        `❌ SMTP Authentication Error: Invalid credentials\n` +
+        `   Check: EMAIL_USER and EMAIL_PASS environment variables`
+      );
+    }
+    
+    // Reset transporter on connection errors to force reconnection
+    if (error.code === "ETIMEDOUT" || error.code === "ECONNREFUSED" || error.code === "ESOCKET") {
+      transporterInstance = null;
+    }
+    
     return false;
   }
 };
