@@ -54,10 +54,10 @@ enum AuditAction {
 }
 
 enum Role {
-  ADMIN
+  SYSTEM_ADMIN
   DPO
   AUDITOR
-  SYSTEM
+  ADMINISTRATOR
 }
 
 // =======================
@@ -104,7 +104,6 @@ model DataFiduciary {
   api_secret     String // Hashed
   webhook_url    String?
   webhook_secret String? // For signature verification
-  callback_url   String?
 
   // Rate Limiting
   rate_limit_per_min Int @default(1000)
@@ -130,6 +129,7 @@ model DataFiduciary {
   last_api_call DateTime?
 
   // Relations
+  admin                   User[]
   mappings                PrincipalFiduciaryMap[]
   purposes                Purpose[]
   consents                ConsentArtifact[]
@@ -144,6 +144,7 @@ model DataFiduciary {
 // =======================
 //  CONSENT ENTITIES
 // =======================
+
 model PrincipalFiduciaryMap {
   principal_fiduciary_map_id String @id @default(uuid())
   data_fiduciary_id          String
@@ -478,12 +479,34 @@ model User {
   user_id    String    @id @default(uuid())
   name       String
   email      String    @unique
-  role       Role      @default(ADMIN)
+
+  data_fiduciary_id String?
+  data_fiduciary DataFiduciary? @relation(references:[data_fiduciary_id],fields:[data_fiduciary_id])
+
+  role       Role      @default(SYSTEM_ADMIN)       
   is_deleted Boolean   @default(false)
   deleted_at DateTime?
   is_active  Boolean   @default(true)
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
+
+  otps OTP[]
+}
+
+model OTP {
+  otp_id     String   @id @default(uuid())
+  user_id    String
+  email      String   @unique
+  otp_code   String
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([expires_at])
+  @@index([user_id])
+  @@map("otp")
 }
 
 model DataProtectionOfficer {
