@@ -19,8 +19,6 @@ interface EmailOptions {
   text?: string;
 }
 
-console.log(process.env.EMAIL_FROM)
-
 // Cache transporter instance to reuse connections
 let transporterInstance: nodemailer.Transporter | null = null;
 
@@ -44,9 +42,8 @@ const createTransporter = (): nodemailer.Transporter => {
     debug: env.NODE_ENV === "development",
   };
 
-  // For development, use ethereal email or console log
+  // For development, use ethereal email for testing
   if (env.NODE_ENV === "development") {
-    // You can use ethereal.email for testing in development
     transporterInstance = nodemailer.createTransport({
       host: "smtp.ethereal.email",
       port: 587,
@@ -60,24 +57,46 @@ const createTransporter = (): nodemailer.Transporter => {
     return transporterInstance;
   }
 
-  // Validate production credentials
+  // For production, validate and use actual SMTP settings
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     throw new Error(
       "❌ Missing email credentials: EMAIL_USER and EMAIL_PASS must be set in production"
     );
   }
 
-  // For production, use actual SMTP settings
-  transporterInstance = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: parseInt(process.env.SMTP_PORT || "587"),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    ...connectionOptions,
-  });
+  const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
+  const smtpPort = parseInt(process.env.SMTP_PORT || "587");
+  const isGmail = smtpHost.includes("gmail.com");
+
+  // For Gmail, use service name for better compatibility, otherwise use explicit host/port
+  if (isGmail && !process.env.SMTP_HOST) {
+    // Use Gmail service (simpler, handles all settings automatically)
+    transporterInstance = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      ...connectionOptions,
+    });
+  } else {
+    // Use explicit SMTP settings for custom providers
+    transporterInstance = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: process.env.SMTP_SECURE === "true" || smtpPort === 465,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      ...(isGmail && {
+        tls: {
+          rejectUnauthorized: false, // Allow self-signed certificates if needed
+        },
+      }),
+      ...connectionOptions,
+    });
+  }
 
   return transporterInstance;
 };
@@ -127,14 +146,24 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
         `   Check: 1) SMTP server is reachable, 2) Firewall rules, 3) Network connectivity`
       );
     } else if (error.code === "EAUTH") {
+      const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
+      const isGmail = smtpHost.includes("gmail.com");
+      
       console.error(
         `❌ SMTP Authentication Error: Invalid credentials\n` +
-        `   Check: EMAIL_USER and EMAIL_PASS environment variables`
+        `   Host: ${smtpHost}\n` +
+        `   User: ${process.env.EMAIL_USER || "NOT SET"}\n` +
+        `   ${isGmail ? "⚠️  For Gmail:\n" : ""}` +
+        `   ${isGmail ? "   1. Enable 2-Step Verification on your Google account\n" : ""}` +
+        `   ${isGmail ? "   2. Generate an App Password (not your regular password)\n" : ""}` +
+        `   ${isGmail ? "   3. Use the App Password as EMAIL_PASS\n" : ""}` +
+        `   ${isGmail ? "   4. Go to: https://myaccount.google.com/apppasswords\n" : ""}` +
+        `   Check: EMAIL_USER and EMAIL_PASS environment variables are correct`
       );
     }
     
-    // Reset transporter on connection errors to force reconnection
-    if (error.code === "ETIMEDOUT" || error.code === "ECONNREFUSED" || error.code === "ESOCKET") {
+    // Reset transporter on connection/auth errors to force reconnection
+    if (error.code === "ETIMEDOUT" || error.code === "ECONNREFUSED" || error.code === "ESOCKET" || error.code === "EAUTH") {
       transporterInstance = null;
     }
     
@@ -218,4 +247,3 @@ export const sendOTPEmail = async (
 
   return await sendEmail({ to: email, subject, html, text });
 };
-
