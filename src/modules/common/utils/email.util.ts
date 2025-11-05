@@ -26,22 +26,6 @@ let transporterInstance: nodemailer.Transporter | null = null;
  * Create a transporter for sending emails
  */
 const createTransporter = (): nodemailer.Transporter => {
-  // Return cached instance if available
-  if (transporterInstance) {
-    return transporterInstance;
-  }
-
-  // Common connection timeout options (in milliseconds)
-  const connectionOptions = {
-    connectionTimeout: 60000, // 60 seconds for initial connection
-    greetingTimeout: 30000,    // 30 seconds for SMTP greeting
-    socketTimeout: 60000,      // 60 seconds for socket operations
-    // Additional options for better reliability
-    requireTLS: false,
-    logger: env.NODE_ENV === "development",
-    debug: env.NODE_ENV === "development",
-  };
-
   // For production, validate and use actual SMTP settings
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     throw new Error(
@@ -49,39 +33,16 @@ const createTransporter = (): nodemailer.Transporter => {
     );
   }
 
-  const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
-  const smtpPort = parseInt(process.env.SMTP_PORT || "587");
-  const isGmail = smtpHost.includes("gmail.com");
-
-  // For Gmail, use service name for better compatibility, otherwise use explicit host/port
-  if (isGmail && !process.env.SMTP_HOST) {
-    // Use Gmail service (simpler, handles all settings automatically)
-    transporterInstance = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      ...connectionOptions,
-    });
-  } else {
-    // Use explicit SMTP settings for custom providers
-    transporterInstance = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: process.env.SMTP_SECURE === "true" || smtpPort === 465,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      ...(isGmail && {
-        tls: {
-          rejectUnauthorized: false, // Allow self-signed certificates if needed
-        },
-      }),
-      ...connectionOptions,
-    });
-  }
+  // Create a transporter object using Gmail SMTP
+  const transporterInstance = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
 
   return transporterInstance;
 };
@@ -121,7 +82,7 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
     return true;
   } catch (error: any) {
     console.error("❌ Error sending email:", error);
-    
+
     // Log more detailed error information
     if (error.code === "ETIMEDOUT" || error.code === "ECONNREFUSED") {
       console.error(
@@ -133,7 +94,7 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
     } else if (error.code === "EAUTH") {
       const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
       const isGmail = smtpHost.includes("gmail.com");
-      
+
       console.error(
         `❌ SMTP Authentication Error: Invalid credentials\n` +
         `   Host: ${smtpHost}\n` +
@@ -146,12 +107,12 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
         `   Check: EMAIL_USER and EMAIL_PASS environment variables are correct`
       );
     }
-    
+
     // Reset transporter on connection/auth errors to force reconnection
     if (error.code === "ETIMEDOUT" || error.code === "ECONNREFUSED" || error.code === "ESOCKET" || error.code === "EAUTH") {
       transporterInstance = null;
     }
-    
+
     return false;
   }
 };
@@ -169,7 +130,7 @@ export const sendOTPEmail = async (
   userName: string = "User"
 ): Promise<boolean> => {
   const subject = "Your DPDP Login OTP Code";
-  
+
   const html = `
     <!DOCTYPE html>
     <html>
