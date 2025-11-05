@@ -1,9 +1,9 @@
 /**
- * @fileoverview Email utility for sending emails using Nodemailer
+ * @fileoverview Email utility for sending emails using Resend
  * @module modules/common/utils/email
  */
 
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { env } from "@config/env/env";
 import dotenv from "dotenv";
 dotenv.config();
@@ -19,32 +19,26 @@ interface EmailOptions {
   text?: string;
 }
 
-// Cache transporter instance to reuse connections
-let transporterInstance: nodemailer.Transporter | null = null;
+// Cache Resend instance to reuse connections
+let resendInstance: Resend | null = null;
 
 /**
- * Create a transporter for sending emails
+ * Get or create Resend instance
  */
-const createTransporter = (): nodemailer.Transporter => {
-  // For production, validate and use actual SMTP settings
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+const getResendInstance = (): Resend => {
+  if (resendInstance) {
+    return resendInstance;
+  }
+
+  // Validate Resend API key
+  if (!process.env.RESEND_API_KEY) {
     throw new Error(
-      "❌ Missing email credentials: EMAIL_USER and EMAIL_PASS must be set in production"
+      "❌ Missing Resend API key: RESEND_API_KEY must be set in environment variables"
     );
   }
 
-  // Create a transporter object using Gmail SMTP
-  const transporterInstance = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-
-  return transporterInstance;
+  resendInstance = new Resend(process.env.RESEND_API_KEY);
+  return resendInstance;
 };
 
 /**
@@ -54,29 +48,21 @@ const createTransporter = (): nodemailer.Transporter => {
  */
 export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
   try {
-    const transporter = createTransporter();
+    const resend = getResendInstance();
 
-    // Verify connection before sending (optional but helps catch issues early)
-    try {
-      await transporter.verify();
-    } catch (verifyError) {
-      console.error("❌ SMTP connection verification failed:", verifyError);
-      // Don't throw here, still try to send (some servers don't support verify)
-    }
+    const emailFrom = process.env.EMAIL_FROM || "DPDP CMS <noreply@dpdp.com>";
 
-    const mailOptions = {
-      from: process.env.EMAIL_FROM || "DPDP CMS <noreply@dpdp.com>",
+    const result = await resend.emails.send({
+      from: emailFrom,
       to: options.to,
       subject: options.subject,
       html: options.html,
-      text: options.text || "",
-    };
-
-    const info = await transporter.sendMail(mailOptions);
+      text: options.text,
+    });
 
     if (env.NODE_ENV === "development") {
       console.log("📧 Email sent successfully!");
-      console.log("Preview URL: %s", nodemailer.getTestMessageUrl(info));
+      console.log("Email ID:", result.data?.id);
     }
 
     return true;
@@ -84,33 +70,20 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
     console.error("❌ Error sending email:", error);
 
     // Log more detailed error information
-    if (error.code === "ETIMEDOUT" || error.code === "ECONNREFUSED") {
+    if (error.message) {
       console.error(
-        `❌ SMTP Connection Error: ${error.code}\n` +
-        `   Host: ${process.env.SMTP_HOST || "smtp.gmail.com"}\n` +
-        `   Port: ${process.env.SMTP_PORT || "587"}\n` +
-        `   Check: 1) SMTP server is reachable, 2) Firewall rules, 3) Network connectivity`
-      );
-    } else if (error.code === "EAUTH") {
-      const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
-      const isGmail = smtpHost.includes("gmail.com");
-
-      console.error(
-        `❌ SMTP Authentication Error: Invalid credentials\n` +
-        `   Host: ${smtpHost}\n` +
-        `   User: ${process.env.EMAIL_USER || "NOT SET"}\n` +
-        `   ${isGmail ? "⚠️  For Gmail:\n" : ""}` +
-        `   ${isGmail ? "   1. Enable 2-Step Verification on your Google account\n" : ""}` +
-        `   ${isGmail ? "   2. Generate an App Password (not your regular password)\n" : ""}` +
-        `   ${isGmail ? "   3. Use the App Password as EMAIL_PASS\n" : ""}` +
-        `   ${isGmail ? "   4. Go to: https://myaccount.google.com/apppasswords\n" : ""}` +
-        `   Check: EMAIL_USER and EMAIL_PASS environment variables are correct`
+        `❌ Resend API Error: ${error.message}\n` +
+        `   Check: 1) RESEND_API_KEY is valid, 2) Email domain is verified in Resend, 3) From address is authorized`
       );
     }
 
-    // Reset transporter on connection/auth errors to force reconnection
-    if (error.code === "ETIMEDOUT" || error.code === "ECONNREFUSED" || error.code === "ESOCKET" || error.code === "EAUTH") {
-      transporterInstance = null;
+    // Reset instance on errors to force reconnection
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      resendInstance = null;
+      console.error(
+        `❌ Authentication Error: Invalid API key or unauthorized access\n` +
+        `   Check: RESEND_API_KEY environment variable is correct`
+      );
     }
 
     return false;

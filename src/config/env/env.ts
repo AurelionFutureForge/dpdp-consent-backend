@@ -11,6 +11,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(8001),
   HOST: z.string().default("0.0.0.0"),
   ALLOWED_ORIGINS: z.string().transform((val) => val.split(',').map((origin) => origin.trim()).filter(Boolean)),
+  RESEND_API_KEY: z.string(),
+  EMAIL_FROM: z.string().optional(),
   
   // DPDP specific configs
   CORS_ORIGIN: z.string().default('*'),
