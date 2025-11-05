@@ -19,6 +19,7 @@
     "inlineSources": true,
     "sourceRoot": "/",
     "paths": {
+      "@/*": ["src/*"],
       "@/v1/*": ["src/api/v1/*"],
       "@prismaClient": ["prisma/client/prismaClient.ts"],
       "@config/*": ["src/config/*"],

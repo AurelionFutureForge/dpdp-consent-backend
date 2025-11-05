@@ -1,5 +1,5 @@
 import { env } from "@config/env/env";
-import createApp from "./api/v1/app";
+import createApp from "./app";
 import dotenv from "dotenv";
 
 // Load environment variables

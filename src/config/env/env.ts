@@ -7,6 +7,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DATABASE_URL: z.string().url(),
   ACCESS_TOKEN_SECRET: z.string(),
+  REFRESH_TOKEN_SECRET: z.string(),
   PORT: z.coerce.number().default(8001),
   HOST: z.string().default("0.0.0.0"),
   ALLOWED_ORIGINS: z.string().transform((val) => val.split(',').map((origin) => origin.trim()).filter(Boolean)),
