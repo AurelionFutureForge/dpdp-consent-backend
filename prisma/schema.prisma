@@ -60,6 +60,21 @@ enum Role {
   ADMINISTRATOR
 }
 
+enum PlatformType {
+  WEBSITE
+  APPLE_APP_STORE
+  GOOGLE_PLAY_STORE
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
 // =======================
 //  CORE ENTITIES
 // =======================
@@ -111,8 +126,12 @@ model DataFiduciary {
 
   // Settings
   is_public  Boolean @default(true)
-  is_active  Boolean @default(true)
+  is_active  Boolean @default(false) // Default false, requires admin approval
   is_deleted Boolean @default(false)
+  
+  // Activation Tracking
+  activated_by String? // User ID who activated the account
+  activated_at DateTime?
 
   // Branding (for white-label)
   logo_url String?
@@ -140,6 +159,60 @@ model DataFiduciary {
   alert                   Alert[]
   data_protection_officer DataProtectionOfficer[]
   webhook_logs            WebhookLog[]
+  platform_submissions    PlatformSubmission[]
+}
+
+// =======================
+//  PLATFORM SUBMISSIONS (Websites & Apps)
+// =======================
+
+model PlatformSubmission {
+  platform_submission_id String           @id @default(uuid())
+  data_fiduciary_id      String
+  platform_type          PlatformType
+  status                 SubmissionStatus @default(DRAFT)
+
+  // Platform Details
+  url         String // Website URL or App Store/Play Store URL
+  description String?
+
+  // Submission Details
+  submitted_by         String? // User ID who submitted
+  submitted_at         DateTime?
+  submission_notes     String? // Notes from submitter
+  
+  // Review Details
+  reviewed_by          String? // Admin/User ID who reviewed
+  reviewed_at          DateTime?
+  review_notes         String? // Internal admin notes
+  rejection_reason     String? // Reason for rejection (shown to fiduciary)
+  
+  // Approval Details
+  approved_by          String? // Admin/User ID who approved
+  approved_at          DateTime?
+  
+  // Revocation Details (if approved then later revoked)
+  revoked_by           String? // Admin/User ID who revoked
+  revoked_at           DateTime?
+  revocation_reason    String?
+
+  // Additional metadata
+  metadata Json? // Store any additional platform-specific data
+
+  // Lifecycle
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  is_deleted Boolean  @default(false)
+  deleted_at DateTime?
+
+  // Relations
+  fiduciary DataFiduciary @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+
+  @@index([data_fiduciary_id])
+  @@index([status])
+  @@index([platform_type])
+  @@index([status, platform_type])
+  @@map("platform_submissions")
 }
 
 // =======================
