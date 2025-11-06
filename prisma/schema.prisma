@@ -131,6 +131,7 @@ model DataFiduciary {
   // Relations
   admin                   User[]
   mappings                PrincipalFiduciaryMap[]
+  purpose_categories      PurposeCategory[]
   purposes                Purpose[]
   consents                ConsentArtifact[]
   grievances              Grievance[]
@@ -160,16 +161,19 @@ model PrincipalFiduciaryMap {
 
 model PurposeCategory {
   purpose_category_id String   @id @default(uuid())
-  name                String   @unique
+  data_fiduciary_id   String
+  name                String
   description         String?
-  icon                String?
   display_order       Int      @default(0)
   is_active           Boolean  @default(true)
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 
-  purposes Purpose[]
+  fiduciary DataFiduciary @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+  purposes  Purpose[]
 
+  @@unique([data_fiduciary_id, name])  // Unique per fiduciary
+  @@index([data_fiduciary_id])
   @@index([is_active, display_order])
   @@map("purpose_categories")
 }
@@ -369,29 +373,29 @@ model ProcessorAck {
 }
 
 model WebhookLog {
-  webhook_log_id    String   @id @default(uuid())
+  webhook_log_id    String @id @default(uuid())
   data_fiduciary_id String
-  
+
   // Request
-  event_type        String
-  webhook_url       String
-  method            String   @default("POST")
-  headers           Json?
-  payload           Json
-  signature         String?
-  
+  event_type  String
+  webhook_url String
+  method      String  @default("POST")
+  headers     Json?
+  payload     Json
+  signature   String?
+
   // Response
-  status_code       Int?
-  response_body     String?
-  response_time_ms  Int?
-  
+  status_code      Int?
+  response_body    String?
+  response_time_ms Int?
+
   // Result
-  success           Boolean  @default(false)
-  error_message     String?
-  
+  success       Boolean @default(false)
+  error_message String?
+
   // Timestamps
-  created_at        DateTime @default(now())
-  
+  created_at DateTime @default(now())
+
   fiduciary DataFiduciary @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
 
   @@index([data_fiduciary_id])
@@ -476,14 +480,14 @@ model AuditLog {
 // =======================
 
 model User {
-  user_id    String    @id @default(uuid())
-  name       String
-  email      String    @unique
+  user_id String @id @default(uuid())
+  name    String
+  email   String @unique
 
   data_fiduciary_id String?
-  data_fiduciary DataFiduciary? @relation(references:[data_fiduciary_id],fields:[data_fiduciary_id])
+  data_fiduciary    DataFiduciary? @relation(references: [data_fiduciary_id], fields: [data_fiduciary_id])
 
-  role       Role      @default(SYSTEM_ADMIN)       
+  role       Role      @default(SYSTEM_ADMIN)
   is_deleted Boolean   @default(false)
   deleted_at DateTime?
   is_active  Boolean   @default(true)
