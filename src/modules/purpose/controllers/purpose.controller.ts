@@ -196,3 +196,22 @@ export const GetPurposesGroupedByFiduciaryController = async (req: Request, res:
     next(error);
   }
 };
+
+/**
+ * Controller to get complete version history of a purpose.
+ * 
+ * @param {Request} req - Express request object with purpose_id and data_fiduciary_id in params.
+ * @param {Response} res - Express response object.
+ * @param {NextFunction} next - Express next middleware function.
+ * 
+ * @returns {Promise<void>} Sends JSON response with purpose version history.
+ */
+export const GetPurposeHistoryController = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { data_fiduciary_id, purpose_id } = PurposeSchema.GetPurposeHistorySchema.parse({ params: req.params });
+    const response = await PurposeService.getPurposeHistory(purpose_id, data_fiduciary_id);
+    sendResponse(res, 200, response.success, response.message, response.data);
+  } catch (error) {
+    next(error);
+  }
+};

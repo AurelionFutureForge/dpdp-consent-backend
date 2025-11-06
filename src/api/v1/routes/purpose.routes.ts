@@ -30,6 +30,9 @@ router.post("/:data_fiduciary_id", PurposeController.CreatePurposeController);
 // Get specific purpose by ID
 router.get("/:data_fiduciary_id/:purpose_id", PurposeController.GetPurposeByIdController);
 
+// Get purpose version history
+router.get("/:data_fiduciary_id/:purpose_id/history", PurposeController.GetPurposeHistoryController);
+
 // Update purpose
 router.put("/:data_fiduciary_id/:purpose_id", PurposeController.UpdatePurposeController);
 
@@ -40,4 +43,3 @@ router.patch("/:data_fiduciary_id/:purpose_id/toggle-status", PurposeController.
 router.delete("/:data_fiduciary_id/:purpose_id", PurposeController.DeletePurposeController);
 
 export default router;
-

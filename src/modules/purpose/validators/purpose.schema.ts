@@ -266,3 +266,16 @@ export const GetPurposesGroupedByFiduciarySchema = z.object({
   q: query.q,
 }));
 
+/**
+ * Combined schema for getting purpose history/versions (params).
+ */
+export const GetPurposeHistorySchema = z.object({
+  params: z.object({
+    data_fiduciary_id: z.string().uuid("Invalid data fiduciary ID"),
+    purpose_id: z.string().uuid("Invalid purpose ID"),
+  }),
+}).transform(({ params }) => ({
+  data_fiduciary_id: params.data_fiduciary_id,
+  purpose_id: params.purpose_id,
+}));
+

@@ -1087,3 +1087,126 @@ export const getPurposesGroupedByFiduciary = async (
   }
 };
 
+/**
+ * Gets the complete version history of a purpose.
+ * Returns all versions ordered by version number (latest first).
+ * 
+ * @param {string} purpose_id - The purpose ID.
+ * @param {string} data_fiduciary_id - Data fiduciary ID for authorization check.
+ * 
+ * @returns {Promise<PurposeTypes.ApiResponse<any>>} API response with purpose version history.
+ * @throws {AppError} Throws an error if purpose not found or unauthorized access.
+ */
+export const getPurposeHistory = async (
+  purpose_id: string,
+  data_fiduciary_id: string
+): Promise<PurposeTypes.ApiResponse<any>> => {
+  try {
+    // Check if purpose exists
+    const purpose = await prisma.purpose.findUnique({
+      where: { purpose_id },
+      select: {
+        purpose_id: true,
+        data_fiduciary_id: true,
+        title: true,
+        description: true,
+        purpose_category_id: true,
+        legal_basis: true,
+        data_fields: true,
+        processing_activities: true,
+        retention_period_days: true,
+        is_mandatory: true,
+        is_active: true,
+        requires_renewal: true,
+        renewal_period_days: true,
+        display_order: true,
+        created_at: true,
+        updated_at: true,
+        category: {
+          select: {
+            purpose_category_id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!purpose) {
+      throw new AppError("Purpose not found", 404);
+    }
+
+    // Authorization check
+    if (purpose.data_fiduciary_id !== data_fiduciary_id) {
+      throw new AppError("Unauthorized: You don't have access to this purpose", 403);
+    }
+
+    // Get all versions of this purpose
+    const versions = await prisma.purposeVersion.findMany({
+      where: { purpose_id },
+      orderBy: { version_number: 'desc' }, // Latest first
+      select: {
+        purpose_version_id: true,
+        version_number: true,
+        title: true,
+        description: true,
+        language_code: true,
+        is_current: true,
+        created_at: true,
+        published_at: true,
+        deprecated_at: true,
+        _count: {
+          select: {
+            consents: true,
+          },
+        },
+      },
+    });
+
+    // Get total consent count across all versions
+    const totalConsents = versions.reduce((sum, version) => sum + version._count.consents, 0);
+
+    // Transform versions to include consent count
+    const transformedVersions = versions.map(({ _count, ...version }) => ({
+      ...version,
+      consent_count: _count.consents,
+      status: version.is_current 
+        ? 'current' 
+        : version.deprecated_at 
+          ? 'deprecated' 
+          : 'archived',
+    }));
+
+    return {
+      success: true,
+      message: "Purpose history retrieved successfully",
+      data: {
+        purpose: {
+          purpose_id: purpose.purpose_id,
+          title: purpose.title,
+          description: purpose.description,
+          category: purpose.category,
+          legal_basis: purpose.legal_basis,
+          data_fields: purpose.data_fields,
+          processing_activities: purpose.processing_activities,
+          retention_period_days: purpose.retention_period_days,
+          is_mandatory: purpose.is_mandatory,
+          is_active: purpose.is_active,
+          requires_renewal: purpose.requires_renewal,
+          renewal_period_days: purpose.renewal_period_days,
+          display_order: purpose.display_order,
+          created_at: purpose.created_at,
+          updated_at: purpose.updated_at,
+        },
+        version_history: {
+          total_versions: versions.length,
+          total_consents: totalConsents,
+          current_version: transformedVersions.find((v) => v.is_current)?.version_number || null,
+          versions: transformedVersions,
+        },
+      },
+    };
+  } catch (error) {
+    throw error;
+  }
+};
+
