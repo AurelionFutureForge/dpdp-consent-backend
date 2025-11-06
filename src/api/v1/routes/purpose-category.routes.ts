@@ -5,7 +5,7 @@
  */
 
 import { Router } from "express";
-import { PurposeCategoryController } from "@/modules/purpose";
+import * as PurposeCategoryController from "@/modules/purpose/controllers/purpose-category.controller";
 
 const router = Router();
 
