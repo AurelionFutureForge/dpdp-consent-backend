@@ -119,22 +119,6 @@ export interface PurposeCategoryAnalyticsResponse {
 }
 
 /**
- * Interface for purpose category mini summary response (lightweight version).
- * 
- * @interface PurposeCategoryMiniSummaryResponse
- * @property {number} total_categories - Total categories count.
- * @property {number} active_categories - Active categories count.
- * @property {number} inactive_categories - Inactive categories count.
- * @property {number} recently_created - Recently created count (last 30 days).
- */
-export interface PurposeCategoryMiniSummaryResponse {
-  total_categories: number;
-  active_categories: number;
-  inactive_categories: number;
-  recently_created: number;
-}
-
-/**
  * Interface for toggle status response.
  * 
  * @interface ToggleStatusResponse

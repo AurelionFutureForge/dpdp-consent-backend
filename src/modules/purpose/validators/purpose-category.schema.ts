@@ -137,17 +137,6 @@ export const GetPurposeCategoryAnalyticsSchema = z.object({
 }));
 
 /**
- * Combined schema for getting purpose category mini summary (params).
- */
-export const GetPurposeCategoryMiniSummarySchema = z.object({
-  params: z.object({
-    data_fiduciary_id: z.string().uuid("Invalid data fiduciary ID"),
-  }),
-}).transform(({ params }) => ({
-  data_fiduciary_id: params.data_fiduciary_id,
-}));
-
-/**
  * Combined schema for reordering purpose categories (params + body).
  */
 export const ReorderPurposeCategoriesSchema = z.object({

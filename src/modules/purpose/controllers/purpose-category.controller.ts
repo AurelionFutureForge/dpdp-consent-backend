@@ -4,7 +4,8 @@
  */
 
 import { NextFunction, Request, Response } from "express";
-import { PurposeCategoryService, PurposeCategorySchema } from "@/modules/purpose";
+import * as PurposeCategoryService from "@/modules/purpose/services/purpose-category.service";
+import * as PurposeCategorySchema from "@/modules/purpose/validators/purpose-category.schema";
 import { sendResponse } from "@/modules/common/utils";
 
 /**

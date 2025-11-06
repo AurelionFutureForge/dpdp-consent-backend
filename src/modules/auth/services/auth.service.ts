@@ -216,11 +216,7 @@ export const handleVerifyOTP = async (email: string, otp: string, otp_id: string
     });
 
     // Calculate is_system_admin: true if role is SYSTEM_ADMIN/ADMINISTRATOR/DPO/AUDITOR and data_fiduciary_id is null
-    const isSystemAdmin = (user.role === "SYSTEM_ADMIN" || 
-                          user.role === "ADMINISTRATOR" || 
-                          user.role === "DPO" || 
-                          user.role === "AUDITOR") && 
-                          user.data_fiduciary_id === null;
+    const isSystemAdmin = (user.role === "SYSTEM_ADMIN" || user.role === "ADMINISTRATOR" || user.role === "DPO" || user.role === "AUDITOR") && user.data_fiduciary_id === null;
 
     // Generate JWT tokens
     const tokenPayload = {

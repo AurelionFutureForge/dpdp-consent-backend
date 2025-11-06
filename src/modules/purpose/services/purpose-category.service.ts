@@ -5,7 +5,7 @@
 
 import prisma from "prisma/client/prismaClient";
 import { AppError } from "@/modules/common/middlewares";
-import { PurposeCategoryTypes } from "@/modules/purpose";
+import * as PurposeCategoryTypes from "@/modules/purpose/interfaces/purpose-category.interface";
 
 /**
  * Retrieves all purpose categories with pagination, search, and filtering.
