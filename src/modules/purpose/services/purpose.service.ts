@@ -405,10 +405,21 @@ export const updatePurpose = async (
     if (renewal_period_days !== undefined) updateData.renewal_period_days = renewal_period_days;
     if (display_order !== undefined) updateData.display_order = display_order;
 
-    // Check if title or description changed to create a new version
+    // Check if any significant field changed to create a new version
     const titleChanged = title !== undefined && title !== existingPurpose.title;
     const descriptionChanged = description !== undefined && description !== existingPurpose.description;
-    const shouldCreateVersion = titleChanged || descriptionChanged;
+    const categoryChanged = purpose_category_id !== undefined && purpose_category_id !== existingPurpose.purpose_category_id;
+    const legalBasisChanged = legal_basis !== undefined && legal_basis !== existingPurpose.legal_basis;
+    const retentionChanged = retention_period_days !== undefined && retention_period_days !== existingPurpose.retention_period_days;
+    const mandatoryChanged = is_mandatory !== undefined && is_mandatory !== existingPurpose.is_mandatory;
+    const renewalChanged = requires_renewal !== undefined && requires_renewal !== existingPurpose.requires_renewal;
+    const renewalPeriodChanged = renewal_period_days !== undefined && renewal_period_days !== existingPurpose.renewal_period_days;
+    
+    // Check if arrays changed (data_fields, processing_activities)
+    const dataFieldsChanged = data_fields !== undefined && JSON.stringify(data_fields.sort()) !== JSON.stringify(existingPurpose.data_fields.sort());
+    const processingActivitiesChanged = processing_activities !== undefined && JSON.stringify(processing_activities.sort()) !== JSON.stringify(existingPurpose.processing_activities.sort());
+    
+    const shouldCreateVersion = titleChanged || descriptionChanged || categoryChanged || legalBasisChanged || retentionChanged || mandatoryChanged || renewalChanged || renewalPeriodChanged || dataFieldsChanged || processingActivitiesChanged;
 
     // Update purpose with optional version creation in a transaction
     const updatedPurpose = await prisma.$transaction(async (tx) => {
@@ -558,25 +569,28 @@ export const togglePurposeStatus = async (
 
 /**
  * Deletes a purpose (hard delete).
+ * IMPORTANT: Can only delete if NO ConsentArtifacts exist for any of its versions.
+ * If consent artifacts exist, the purpose should be made inactive instead.
  * 
  * @param {string} purpose_id - The purpose ID.
  * @param {string} data_fiduciary_id - Data fiduciary ID for authorization check.
  * 
  * @returns {Promise<PurposeTypes.ApiResponse<null>>} API response with deletion confirmation.
- * @throws {AppError} Throws an error if deletion fails, purpose not found, or unauthorized.
+ * @throws {AppError} Throws an error if deletion fails, purpose not found, unauthorized, or has consent artifacts.
  */
-export const deletePurpose = async (
-  purpose_id: string,
-  data_fiduciary_id: string
-): Promise<PurposeTypes.ApiResponse<null>> => {
+export const deletePurpose = async (purpose_id: string, data_fiduciary_id: string): Promise<PurposeTypes.ApiResponse<null>> => {
   try {
-    // Check if purpose exists
+    // Check if purpose exists and get all its versions
     const existingPurpose = await prisma.purpose.findUnique({
       where: { purpose_id },
       include: {
-        _count: {
-          select: {
-            purpose_version: true,
+        purpose_version: {
+          include: {
+            _count: {
+              select: {
+                consents: true,
+              },
+            },
           },
         },
       },
@@ -591,18 +605,39 @@ export const deletePurpose = async (
       throw new AppError("Unauthorized: You don't have access to this purpose", 403);
     }
 
-    // Check if purpose has versions (which might be linked to consents)
-    const versionCount = existingPurpose._count.purpose_version;
-    if (versionCount > 0) {
-      throw new AppError("Cannot delete: This purpose has associated versions", 400);
+    // Check if ANY version has associated consent artifacts
+    const hasConsentArtifacts = existingPurpose.purpose_version.some(
+      (version) => version._count.consents > 0
+    );
+
+    if (hasConsentArtifacts) {
+      throw new AppError(
+        "Cannot delete: This purpose has consent artifacts. Please make the purpose inactive instead of deleting it to maintain consent history and compliance.",
+        400
+      );
     }
 
-    // Hard delete - permanently remove the purpose
-    await prisma.purpose.delete({ where: { purpose_id } });
+    // Hard delete - permanently remove the purpose and all its versions in a transaction
+    await prisma.$transaction(async (tx) => {
+      // Delete all purpose versions first (due to foreign key constraints)
+      await tx.purposeVersion.deleteMany({
+        where: { purpose_id },
+      });
+
+      // Delete all purpose translations
+      await tx.purposeTranslation.deleteMany({
+        where: { purpose_id },
+      });
+
+      // Delete the purpose
+      await tx.purpose.delete({
+        where: { purpose_id },
+      });
+    });
 
     return {
       success: true,
-      message: "Purpose deleted successfully",
+      message: "Purpose and all associated versions deleted successfully",
       data: null,
     };
   } catch (error) {
@@ -618,9 +653,7 @@ export const deletePurpose = async (
  * @returns {Promise<PurposeTypes.ApiResponse<PurposeTypes.PurposeAnalyticsResponse>>} API response with analytics data.
  * @throws {Error} Throws an error if retrieving analytics fails.
  */
-export const getPurposeAnalytics = async (
-  data_fiduciary_id: string
-): Promise<PurposeTypes.ApiResponse<PurposeTypes.PurposeAnalyticsResponse>> => {
+export const getPurposeAnalytics = async (data_fiduciary_id: string): Promise<PurposeTypes.ApiResponse<PurposeTypes.PurposeAnalyticsResponse>> => {
   try {
     const [
       totalPurposes,
@@ -787,12 +820,7 @@ export const getPurposeAnalytics = async (
  * @returns {Promise<PurposeTypes.ApiResponse<PurposeTypes.PaginatedGroupedByCategoryResponse>>} API response with grouped purposes.
  * @throws {AppError} Throws an error if query fails.
  */
-export const getPurposesGroupedByCategory = async (
-  data_fiduciary_id: string,
-  page: number = 1,
-  limit: number = 10,
-  q?: string
-): Promise<PurposeTypes.ApiResponse<PurposeTypes.PaginatedGroupedByCategoryResponse>> => {
+export const getPurposesGroupedByCategory = async (data_fiduciary_id: string, page: number = 1, limit: number = 10, q?: string): Promise<PurposeTypes.ApiResponse<PurposeTypes.PaginatedGroupedByCategoryResponse>> => {
   try {
     const skip = (page - 1) * limit;
 

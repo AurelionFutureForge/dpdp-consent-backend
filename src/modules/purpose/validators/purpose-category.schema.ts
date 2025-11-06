@@ -176,3 +176,64 @@ export const GetPurposeCategoriesGroupedByFiduciarySchema = z.object({
   limit: query.limit,
   q: query.q,
 }));
+
+/**
+ * Schema for getting all purposes by purpose_category_id with pagination and filtering.
+ * Combines params (data_fiduciary_id, purpose_category_id) and query parameters.
+ */
+export const GetAllPurposesByCategorySchema = z.object({
+  params: z.object({
+    data_fiduciary_id: z.string().uuid("Invalid data fiduciary ID"),
+    purpose_category_id: z.string().uuid("Invalid purpose category ID"),
+  }),
+  query: z.object({
+    q: z.string().optional(),
+    is_active: z
+      .string()
+      .optional()
+      .transform((val) => (val === "true" ? true : val === "false" ? false : undefined)),
+    is_mandatory: z
+      .string()
+      .optional()
+      .transform((val) => (val === "true" ? true : val === "false" ? false : undefined)),
+    requires_renewal: z
+      .string()
+      .optional()
+      .transform((val) => (val === "true" ? true : val === "false" ? false : undefined)),
+    sort_by: z.string().optional().default("display_order"),
+    sort_order: z.enum(["asc", "desc"]).optional().default("asc"),
+    page: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val) : 1)),
+    limit: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val) : 10)),
+  }),
+}).transform(({ params, query }) => ({
+  data_fiduciary_id: params.data_fiduciary_id,
+  purpose_category_id: params.purpose_category_id,
+  page: query.page,
+  limit: query.limit,
+  q: query.q,
+  is_active: query.is_active,
+  is_mandatory: query.is_mandatory,
+  requires_renewal: query.requires_renewal,
+  sort_by: query.sort_by,
+  sort_order: query.sort_order,
+}));
+
+/**
+ * Schema for getting analytics for purposes in a specific category.
+ * Requires data_fiduciary_id and purpose_category_id in params.
+ */
+export const GetPurposesCategoryAnalyticsSchema = z.object({
+  params: z.object({
+    data_fiduciary_id: z.string().uuid("Invalid data fiduciary ID"),
+    purpose_category_id: z.string().uuid("Invalid purpose category ID"),
+  }),
+}).transform(({ params }) => ({
+  data_fiduciary_id: params.data_fiduciary_id,
+  purpose_category_id: params.purpose_category_id,
+}));

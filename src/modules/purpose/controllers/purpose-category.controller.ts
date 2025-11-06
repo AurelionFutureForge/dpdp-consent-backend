@@ -177,3 +177,41 @@ export const GetPurposeCategoriesGroupedByFiduciaryController = async (req: Requ
     next(error);
   }
 };
+
+/**
+ * Controller to retrieve all purposes for a specific purpose category with pagination, search, and filtering.
+ * 
+ * @param req - Express request object with data_fiduciary_id and purpose_category_id in params and query parameters.
+ * @param res - Express response object.
+ * @param next - Express next middleware function for error handling.
+ * 
+ * @returns Sends JSON response with paginated list of purposes or passes error to error handler.
+ */
+export const GetAllPurposesByCategoryController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { data_fiduciary_id, purpose_category_id, page, limit, q, is_active, is_mandatory, requires_renewal, sort_by, sort_order } = PurposeCategorySchema.GetAllPurposesByCategorySchema.parse({ params: req.params, query: req.query });
+    const response = await PurposeCategoryService.getAllPurposesByCategory(data_fiduciary_id, purpose_category_id, page, limit, q, is_active, is_mandatory, requires_renewal, sort_by, sort_order);
+    sendResponse(res, 200, response.success, response.message, response.data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Controller to retrieve analytics for purposes in a specific category.
+ * 
+ * @param req - Express request object with data_fiduciary_id and purpose_category_id in params.
+ * @param res - Express response object.
+ * @param next - Express next middleware function for error handling.
+ * 
+ * @returns Sends JSON response with analytics data or passes error to error handler.
+ */
+export const GetPurposesCategoryAnalyticsController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { data_fiduciary_id, purpose_category_id } = PurposeCategorySchema.GetPurposesCategoryAnalyticsSchema.parse({ params: req.params });
+    const response = await PurposeCategoryService.getPurposesCategoryAnalytics(data_fiduciary_id, purpose_category_id);
+    sendResponse(res, 200, response.success, response.message, response.data);
+  } catch (error) {
+    next(error);
+  }
+};

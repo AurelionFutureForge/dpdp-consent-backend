@@ -18,6 +18,12 @@ router.get("/grouped-by-fiduciary", PurposeCategoryController.GetPurposeCategori
 // Analytics route (must come before :purpose_category_id route)
 router.get("/:data_fiduciary_id/analytics/summary", PurposeCategoryController.GetPurposeCategoryAnalyticsController);
 
+// Purpose Management by Category (must come before :data_fiduciary_id route)
+router.get("/:data_fiduciary_id/category/:purpose_category_id/purposes/analytics", PurposeCategoryController.GetPurposesCategoryAnalyticsController);
+
+// Get all purposes in a specific category with pagination and filtering
+router.get("/:data_fiduciary_id/category/:purpose_category_id/purposes", PurposeCategoryController.GetAllPurposesByCategoryController);
+
 // Get all purpose categories with pagination and filtering
 router.get("/:data_fiduciary_id", PurposeCategoryController.GetAllPurposeCategoriesController);
 

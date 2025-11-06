@@ -689,3 +689,284 @@ export const getPurposeCategoriesGroupedByFiduciary = async (
     throw error;
   }
 };
+
+/**
+ * Retrieves all purposes for a specific category with pagination, search, and filtering.
+ * 
+ * @param data_fiduciary_id - Data fiduciary ID to filter purposes.
+ * @param purpose_category_id - Purpose category ID to filter purposes.
+ * @param page - Page number for pagination (default is 1).
+ * @param limit - Number of items per page (default is 10).
+ * @param q - Search term for filtering by title or description.
+ * @param is_active - Filter by active status.
+ * @param is_mandatory - Filter by mandatory status.
+ * @param requires_renewal - Filter by renewal requirement.
+ * @param sort_by - Field to sort by (default: 'display_order').
+ * @param sort_order - Sort order (default: 'asc').
+ * 
+ * @returns API response with paginated list of purposes.
+ */
+export const getAllPurposesByCategory = async (
+  data_fiduciary_id: string,
+  purpose_category_id: string,
+  page: number = 1,
+  limit: number = 10,
+  q?: string,
+  is_active?: boolean,
+  is_mandatory?: boolean,
+  requires_renewal?: boolean,
+  sort_by: string = "display_order",
+  sort_order: "asc" | "desc" = "asc"
+): Promise<any> => {
+  try {
+    const skip = (page - 1) * limit;
+
+    // Verify that the category exists and belongs to the fiduciary
+    const category = await prisma.purposeCategory.findUnique({
+      where: { purpose_category_id },
+    });
+
+    if (!category) {
+      throw new AppError("Purpose category not found", 404);
+    }
+
+    if (category.data_fiduciary_id !== data_fiduciary_id) {
+      throw new AppError("Purpose category does not belong to this data fiduciary", 403);
+    }
+
+    // Build where clause
+    const where: any = {
+      data_fiduciary_id,
+      purpose_category_id,
+    };
+
+    if (q) {
+      const searchTerms = q.split(/\s+/).filter(Boolean);
+
+      if (searchTerms.length > 0) {
+        where.OR = [
+          ...searchTerms.map((term) => ({
+            title: { contains: term, mode: "insensitive" },
+          })),
+          ...searchTerms.map((term) => ({
+            description: { contains: term, mode: "insensitive" },
+          })),
+        ];
+      }
+    }
+
+    if (is_active !== undefined) {
+      where.is_active = is_active;
+    }
+
+    if (is_mandatory !== undefined) {
+      where.is_mandatory = is_mandatory;
+    }
+
+    if (requires_renewal !== undefined) {
+      where.requires_renewal = requires_renewal;
+    }
+
+    // Build orderBy clause
+    const orderBy: any = {};
+    orderBy[sort_by] = sort_order;
+
+    // Get purposes with counts
+    const purposes = await prisma.purpose.findMany({
+      where,
+      skip,
+      take: limit,
+      include: {
+        category: {
+          select: {
+            purpose_category_id: true,
+            name: true,
+          },
+        },
+        _count: {
+          select: {
+            purpose_version: true,
+            translations: true,
+          },
+        },
+      },
+      orderBy,
+    });
+
+    // Get total count
+    const totalPurposes = await prisma.purpose.count({ where });
+
+    // Transform purposes
+    const transformedPurposes = purposes.map(({ _count, ...purpose }) => ({
+      ...purpose,
+      total_versions: _count.purpose_version,
+      total_translations: _count.translations,
+    }));
+
+    return {
+      success: true,
+      message: "Purposes retrieved successfully",
+      data: {
+        data: transformedPurposes,
+        meta: {
+          category: {
+            purpose_category_id: category.purpose_category_id,
+            name: category.name,
+          },
+          pagination: {
+            total_purposes: totalPurposes,
+            limit,
+            current_page: page,
+            total_pages: Math.ceil(totalPurposes / limit),
+          },
+        },
+      },
+    };
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Retrieves analytics for purposes in a specific category.
+ * 
+ * @param data_fiduciary_id - Data fiduciary ID.
+ * @param purpose_category_id - Purpose category ID.
+ * 
+ * @returns API response with analytics data for purposes in the category.
+ */
+export const getPurposesCategoryAnalytics = async (
+  data_fiduciary_id: string,
+  purpose_category_id: string
+): Promise<any> => {
+  try {
+    // Verify that the category exists and belongs to the fiduciary
+    const category = await prisma.purposeCategory.findUnique({
+      where: { purpose_category_id },
+      select: {
+        purpose_category_id: true,
+        name: true,
+        description: true,
+        data_fiduciary_id: true,
+        is_active: true,
+      },
+    });
+
+    if (!category) {
+      throw new AppError("Purpose category not found", 404);
+    }
+
+    if (category.data_fiduciary_id !== data_fiduciary_id) {
+      throw new AppError("Purpose category does not belong to this data fiduciary", 403);
+    }
+
+    // Base filter for purposes in this category
+    const baseFilter = {
+      data_fiduciary_id,
+      purpose_category_id,
+    };
+
+    const [
+      totalPurposes,
+      activePurposes,
+      inactivePurposes,
+      mandatoryPurposes,
+      optionalPurposes,
+      purposesWithRenewal,
+      recentlyCreated,
+      topPurposesByVersions,
+    ] = await Promise.all([
+      // Total purposes in category
+      prisma.purpose.count({ where: baseFilter }),
+      
+      // Active purposes
+      prisma.purpose.count({
+        where: { ...baseFilter, is_active: true },
+      }),
+      
+      // Inactive purposes
+      prisma.purpose.count({
+        where: { ...baseFilter, is_active: false },
+      }),
+      
+      // Mandatory purposes
+      prisma.purpose.count({
+        where: { ...baseFilter, is_mandatory: true },
+      }),
+      
+      // Optional purposes
+      prisma.purpose.count({
+        where: { ...baseFilter, is_mandatory: false },
+      }),
+      
+      // Purposes requiring renewal
+      prisma.purpose.count({
+        where: { ...baseFilter, requires_renewal: true },
+      }),
+      
+      // Recently created (last 30 days)
+      prisma.purpose.count({
+        where: {
+          ...baseFilter,
+          created_at: {
+            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          },
+        },
+      }),
+      
+      // Top purposes by version count
+      prisma.purpose.findMany({
+        where: baseFilter,
+        include: {
+          category: {
+            select: {
+              purpose_category_id: true,
+              name: true,
+            },
+          },
+          _count: {
+            select: {
+              purpose_version: true,
+              translations: true,
+            },
+          },
+        },
+        orderBy: {
+          purpose_version: {
+            _count: "desc",
+          },
+        },
+        take: 10,
+      }),
+    ]);
+
+    return {
+      success: true,
+      message: "Purpose category analytics retrieved successfully",
+      data: {
+        category_info: {
+          purpose_category_id: category.purpose_category_id,
+          name: category.name,
+          description: category.description,
+          is_active: category.is_active,
+        },
+        purpose_counts: {
+          total_purposes: totalPurposes,
+          active_purposes: activePurposes,
+          inactive_purposes: inactivePurposes,
+          mandatory_purposes: mandatoryPurposes,
+          optional_purposes: optionalPurposes,
+          purposes_with_renewal: purposesWithRenewal,
+          recently_created: recentlyCreated,
+        },
+        top_purposes_by_versions: topPurposesByVersions.map(({ _count, ...p }) => ({
+          ...p,
+          total_versions: _count.purpose_version,
+          total_translations: _count.translations,
+        })),
+      },
+    };
+  } catch (error) {
+    throw error;
+  }
+};
