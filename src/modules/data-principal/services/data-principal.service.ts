@@ -49,7 +49,7 @@ export interface RegisterDataPrincipalResponse {
  * @returns Data Principal record
  * 
  * @example
- * // Called by Data Fiduciary when user signs up
+ * Called by Data Fiduciary when user signs up
  * const principal = await registerDataPrincipal({
  *   data_fiduciary_id: "df-uuid-123",
  *   external_user_id: "user-456",  // DF's internal user ID
@@ -115,7 +115,7 @@ export const registerDataPrincipal = async (
         },
       },
       update: {
-        updated_at: new Date(),
+        // updated_at: new Date(),
       },
       create: {
         data_fiduciary_id: input.data_fiduciary_id,
