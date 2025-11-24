@@ -94,10 +94,11 @@ model DataPrincipal {
   deleted_at DateTime?
 
   // Relations
-  mappings   PrincipalFiduciaryMap[]
-  consents   ConsentArtifact[]
-  grievances Grievance[]
-  auditLogs  AuditLog[]              @relation("principal_auditlogs")
+  mappings      PrincipalFiduciaryMap[]
+  consents      ConsentArtifact[]
+  grievances    Grievance[]
+  auditLogs     AuditLog[]              @relation("principal_auditlogs")
+  notifications Notification[]          @relation("principal_notifications")
 }
 
 model DataFiduciary {
@@ -154,7 +155,6 @@ model DataFiduciary {
   purposes                Purpose[]
   consents                ConsentArtifact[]
   grievances              Grievance[]
-  notifications           Notification[]
   retention_policies      RetentionPolicy[]
   alert                   Alert[]
   data_protection_officer DataProtectionOfficer[]
@@ -410,14 +410,22 @@ model ConsentValidation {
 
 model Notification {
   notification_id   String              @id @default(uuid())
-  data_fiduciary_id String
-  channel           NotificationChannel
-  message           String
+  user_id           String              // ✅ Only UUID reference (NO email/phone)
+  notification_type String              // 'consent_granted', 'consent_withdrawn', etc.
+  channels          String              // 'EMAIL,SMS,PUSH'
+  status            String              @default("PENDING") // 'SENT', 'FAILED', 'PENDING'
   sent_at           DateTime?
-  status            String?
-  retry_count       Int                 @default(0)
+  metadata          Json?               // ❌ NO PII stored here (only artifact_id, etc.)
+  created_at        DateTime            @default(now())
+  updated_at        DateTime            @updatedAt
 
-  fiduciary DataFiduciary @relation(fields: [data_fiduciary_id], references: [data_fiduciary_id])
+  principal DataPrincipal @relation("principal_notifications", fields: [user_id], references: [data_principal_id])
+
+  @@index([user_id])
+  @@index([notification_type])
+  @@index([status])
+  @@index([sent_at])
+  @@map("notifications")
 }
 
 model Alert {
