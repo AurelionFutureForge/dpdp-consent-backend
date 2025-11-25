@@ -9,6 +9,62 @@ import * as PurposeSchema from "@/modules/purpose/validators/purpose.schema";
 import { sendResponse } from "@/modules/common/utils";
 
 /**
+ * Controller to retrieve all ACTIVE purposes (no pagination).
+ * Used for consent flow - returns only active purposes with current versions.
+ * 
+ * Validates that all returned purposes have current versions.
+ * Purposes without current versions are excluded and logged as warnings.
+ * 
+ * @param {Request} req - Express request object with data_fiduciary_id in params.
+ * @param {Response} res - Express response object.
+ * @param {NextFunction} next - Express next middleware function.
+ * 
+ * @returns {Promise<void>} Sends JSON response with active purposes data (only purposes with current versions).
+ */
+export const GetActivePurposesController = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { data_fiduciary_id } = PurposeSchema.GetActivePurposesSchema.parse({ params: req.params });
+    const response = await PurposeService.getActivePurposes(data_fiduciary_id);
+    
+    // ✅ Validate that all returned purposes have current versions
+    const purposesWithoutVersions = response.data.filter(
+      (purpose: any) => !purpose.current_version || purpose.current_version === null
+    );
+
+    if (purposesWithoutVersions.length > 0) {
+      // This should not happen as service filters them out, but double-check for safety
+      const purposeIds = purposesWithoutVersions.map((p: any) => p.purpose_id).join(', ');
+      console.warn(
+        `[PURPOSE-CONTROLLER] Warning: ${purposesWithoutVersions.length} purpose(s) without current versions detected: ${purposeIds}`
+      );
+      
+      // Filter them out from response
+      response.data = response.data.filter(
+        (purpose: any) => purpose.current_version && purpose.current_version !== null
+      );
+      
+      response.message = `${response.message} (${purposesWithoutVersions.length} filtered out - no current version)`;
+    }
+
+    // ✅ Final validation: Ensure all purposes in response have current_version
+    const allHaveVersions = response.data.every(
+      (purpose: any) => purpose.current_version && purpose.current_version.purpose_version_id
+    );
+
+    if (!allHaveVersions) {
+      // This is a critical error - should not happen
+      console.error(
+        '[PURPOSE-CONTROLLER] Critical: Some purposes in response still lack current_version. This should not occur.'
+      );
+    }
+
+    sendResponse(res, 200, response.success, response.message, response.data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Controller to retrieve all purposes with pagination, search, and filtering.
  * 
  * @param {Request} req - Express request object with query parameters and data_fiduciary_id in params.

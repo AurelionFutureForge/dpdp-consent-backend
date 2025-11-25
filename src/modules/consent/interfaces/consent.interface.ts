@@ -42,8 +42,7 @@ export interface ConsentNoticeData {
     website_url?: string;
     privacy_policy_url?: string;
   };
-  purposes: ConsentPurposeDetail[];
-  data_fields: string[];
+  purposes_by_category: PurposeCategoryGroup[]; // Grouped by category
   retention_policy: {
     retention_period_days: number;
     withdrawal_policy: string;
@@ -55,6 +54,15 @@ export interface ConsentNoticeData {
   valid_until: Date;
   mandatory_purposes: string[]; // Purpose IDs that are mandatory
   redirect_url?: string; // URL to redirect user after consent submission
+}
+
+/**
+ * Purpose category group for consent notice
+ */
+export interface PurposeCategoryGroup {
+  category_id: string | null; // null for uncategorized
+  category_name: string | null; // null for uncategorized
+  purposes: ConsentPurposeDetail[];
 }
 
 /**

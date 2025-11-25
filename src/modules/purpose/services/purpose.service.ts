@@ -6,6 +6,92 @@
 import prisma from "prisma/client/prismaClient";
 import { AppError } from "@/modules/common/middlewares";
 import * as PurposeTypes from "@/modules/purpose/interfaces/purpose.interface";
+import logger from "@/modules/common/utils/logger";
+
+/**
+ * Gets all ACTIVE purposes for a data fiduciary (no pagination).
+ * Used for consent flow - returns only active purposes with current versions.
+ * 
+ * @param {string} data_fiduciary_id - Data fiduciary ID.
+ * @returns {Promise<PurposeTypes.ApiResponse<PurposeTypes.PurposeWithCounts[]>>} API response with all active purposes.
+ * @throws {Error} Throws an error if retrieval fails.
+ */
+export const getActivePurposes = async (data_fiduciary_id: string): Promise<PurposeTypes.ApiResponse<PurposeTypes.PurposeWithCounts[]>> => {
+  try {
+    // Get all active purposes with their current versions
+    const purposes = await prisma.purpose.findMany({
+      where: {
+        data_fiduciary_id,
+        is_active: true, // Only active purposes
+      },
+      include: {
+        category: {
+          select: {
+            purpose_category_id: true,
+            name: true,
+          },
+        },
+        purpose_version: {
+          where: { is_current: true }, // Only current version
+          take: 1,
+          select: {
+            purpose_version_id: true,
+            version_number: true,
+            title: true,
+            description: true,
+            language_code: true,
+          },
+        },
+        _count: {
+          select: {
+            purpose_version: true,
+            translations: true,
+          },
+        },
+      },
+      orderBy: {
+        display_order: 'asc', // Ordered by display_order
+      },
+    });
+
+    // Filter out purposes without current versions and transform
+    const purposesWithVersions: any[] = [];
+    const purposesWithoutVersions: string[] = [];
+
+    purposes.forEach(({ _count, purpose_version, ...purpose }) => {
+      if (purpose_version.length === 0 || !purpose_version[0]) {
+        // Purpose has no current version - log warning and skip
+        purposesWithoutVersions.push(purpose.purpose_id);
+        logger.warn(
+          `[PURPOSE] Active purpose ${purpose.purpose_id} (${purpose.title}) has no current version. Skipping from active purposes list.`
+        );
+      } else {
+        // Purpose has current version - include it
+        purposesWithVersions.push({
+          ...purpose,
+          current_version: purpose_version[0],
+          total_versions: _count.purpose_version,
+          total_translations: _count.translations,
+        });
+      }
+    });
+
+    // Log summary
+    if (purposesWithoutVersions.length > 0) {
+      logger.warn(
+        `[PURPOSE] Found ${purposesWithoutVersions.length} active purpose(s) without current versions. These have been excluded from the response.`
+      );
+    }
+
+    return {
+      success: true,
+      message: `Retrieved ${purposesWithVersions.length} active purpose(s)${purposesWithoutVersions.length > 0 ? ` (${purposesWithoutVersions.length} excluded - no current version)` : ''}`,
+      data: purposesWithVersions as any,
+    };
+  } catch (error) {
+    throw error;
+  }
+};
 
 /**
  * Retrieves all purposes with pagination, search, and filtering.

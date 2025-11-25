@@ -6,6 +6,18 @@
 import { z } from "zod";
 
 /**
+ * Schema for getting all ACTIVE purposes (params only, no pagination).
+ * Used for consent flow.
+ */
+export const GetActivePurposesSchema = z.object({
+  params: z.object({
+    data_fiduciary_id: z.string().uuid("Invalid data fiduciary ID"),
+  }),
+}).transform(({ params }) => ({
+  data_fiduciary_id: params.data_fiduciary_id,
+}));
+
+/**
  * Combined schema for getting all purposes (params + query).
  */
 export const GetAllPurposesSchema = z.object({

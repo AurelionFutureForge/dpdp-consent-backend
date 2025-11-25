@@ -269,6 +269,44 @@ export const getConsentNotice = async (
       throw new AppError("No valid purposes found for consent request", 500);
     }
 
+    // ✅ Group purposes by category
+    const purposesByCategoryMap = new Map<string | null, ConsentTypes.ConsentPurposeDetail[]>();
+    
+    purposeDetails.forEach(purpose => {
+      const categoryId = purpose.category?.purpose_category_id || null;
+      
+      if (!purposesByCategoryMap.has(categoryId)) {
+        purposesByCategoryMap.set(categoryId, []);
+      }
+      
+      purposesByCategoryMap.get(categoryId)!.push(purpose);
+    });
+
+    // ✅ Transform to PurposeCategoryGroup array
+    const purposesByCategory: ConsentTypes.PurposeCategoryGroup[] = Array.from(purposesByCategoryMap.entries()).map(([categoryId, purposes]) => {
+      // Find category name from first purpose in this category
+      const firstPurpose = purposes[0];
+      const categoryName = firstPurpose.category?.name || null;
+      
+      return {
+        category_id: categoryId,
+        category_name: categoryName,
+        purposes: purposes,
+      };
+    });
+
+    // ✅ Sort categories: Uncategorized first, then by category name
+    purposesByCategory.sort((a, b) => {
+      // Uncategorized goes first
+      if (a.category_id === null && b.category_id !== null) return -1;
+      if (a.category_id !== null && b.category_id === null) return 1;
+      // Both have categories - sort by name
+      if (a.category_name && b.category_name) {
+        return a.category_name.localeCompare(b.category_name);
+      }
+      return 0;
+    });
+
     // Get all unique data fields
     const allDataFields = Array.from(
       new Set(purposes.flatMap(p => p.data_fields))
@@ -351,8 +389,7 @@ export const getConsentNotice = async (
           website_url: consentRequest.fiduciary.website_url || undefined,
           privacy_policy_url: consentRequest.fiduciary.privacy_policy_url || undefined,
         },
-        purposes: purposeDetails,
-        data_fields: allDataFields,
+        purposes_by_category: purposesByCategory,
         retention_policy: {
           retention_period_days: maxRetention,
           withdrawal_policy: "You can withdraw your consent at any time through your account settings or by contacting us.",
@@ -363,7 +400,7 @@ export const getConsentNotice = async (
         },
         valid_until: consentRequest.expires_at!,
         mandatory_purposes: mandatoryPurposes,
-        redirect_url: redirectUrl || undefined, // ✅ Return redirect URL (from metadata or platform submission fallback)
+        redirect_url: redirectUrl || undefined, 
       },
     };
   } catch (error) {

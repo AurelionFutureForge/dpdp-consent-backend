@@ -21,6 +21,9 @@ router.get("/:data_fiduciary_id/analytics/summary", PurposeController.GetPurpose
 // Get purposes grouped by category for a specific fiduciary
 router.get("/:data_fiduciary_id/grouped-by-category", PurposeController.GetPurposesGroupedByCategoryController);
 
+// Get all ACTIVE purposes (no pagination) - Used for consent flow
+router.get("/:data_fiduciary_id/active", PurposeController.GetActivePurposesController);
+
 // Get all purposes with pagination and filtering
 router.get("/:data_fiduciary_id", PurposeController.GetAllPurposesController);
 
