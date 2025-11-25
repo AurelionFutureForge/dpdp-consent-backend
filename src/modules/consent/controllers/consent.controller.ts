@@ -226,25 +226,10 @@ export const GetConsentHistoryController = async (
  * 
  * @returns {Promise<void>} Sends JSON response
  */
-export const GetUserConsentsController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const GetUserConsentsController = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const params = ConsentSchema.GetUserConsentsSchema.parse({
-      params: req.params,
-      query: req.query,
-    });
-    
-    const response = await ConsentService.listConsents({
-      data_fiduciary_id: params.data_fiduciary_id,
-      external_user_id: params.external_user_id,
-      status: params.status,
-      page: params.page,
-      limit: params.limit,
-    });
-    
+    const params = ConsentSchema.GetUserConsentsSchema.parse({ params: req.params, query: req.query });
+    const response = await ConsentService.listConsents({ data_fiduciary_id: params.data_fiduciary_id, external_user_id: params.external_user_id, status: params.status, page: params.page, limit: params.limit });
     sendResponse(res, 200, response.success, response.message, response.data);
   } catch (error) {
     next(error);
