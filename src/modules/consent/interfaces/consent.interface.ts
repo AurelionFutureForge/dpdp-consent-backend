@@ -335,7 +335,7 @@ export interface InitiateRenewalResponse {
   renewal_request_id: string;
   artifact_id?: string; // Single artifact if specific
   artifact_ids?: string[]; // Multiple artifacts if bulk renewal
-  status: 'RENEWAL_PENDING';
+  status: 'RENEWAL_PENDING' | 'RENEWAL_EXTENDED';
   current_expires_at?: Date;
   requested_expires_at: Date;
   transparency_info?: {

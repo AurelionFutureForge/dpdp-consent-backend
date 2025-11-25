@@ -1474,100 +1474,6 @@ export const getConsentHistory = async (
 };
 
 /**
- * Get expiring consents
- * GET /api/v1/consents/expiring?within=30d
- * 
- * @param {ConsentTypes.GetExpiringConsentsInput} input - Input for getting expiring consents
- * @returns {Promise<ConsentTypes.ApiResponse<ConsentTypes.GetExpiringConsentsResponse>>}
- */
-export const getExpiringConsents = async (
-  input: ConsentTypes.GetExpiringConsentsInput
-): Promise<ConsentTypes.ApiResponse<ConsentTypes.GetExpiringConsentsResponse>> => {
-  try {
-    // Parse "within" parameter (e.g., "30d" -> 30 days)
-    const withinMatch = input.within.match(/^(\d+)d$/);
-    if (!withinMatch) {
-      throw new AppError("Invalid 'within' parameter format. Use format like '30d', '7d', '90d'", 400);
-    }
-    const withinDays = parseInt(withinMatch[1], 10);
-
-    // Calculate expiry threshold date
-    const thresholdDate = new Date();
-    thresholdDate.setDate(thresholdDate.getDate() + withinDays);
-
-    // Build where clause
-    const where: any = {
-      is_deleted: false,
-      status: "ACTIVE",
-      expires_at: {
-        lte: thresholdDate,
-        gte: new Date(), // Not already expired
-      },
-    };
-
-    if (input.data_fiduciary_id) {
-      where.data_fiduciary_id = input.data_fiduciary_id;
-    }
-
-    // Fetch expiring consents
-    const expiringConsents = await prisma.consentArtifact.findMany({
-      where,
-      include: {
-        purpose_version: {
-          select: {
-            purpose_id: true,
-            title: true,
-          },
-        },
-        fiduciary: {
-          select: {
-            data_fiduciary_id: true,
-            name: true,
-          },
-        },
-      },
-      orderBy: {
-        expires_at: "asc", // Soonest expiring first
-      },
-    });
-
-    // Transform to response format
-    const expiringArtifacts: ConsentTypes.ExpiringConsentArtifact[] = expiringConsents.map(artifact => {
-      const metadata = artifact.metadata as any;
-      const daysUntilExpiry = artifact.expires_at
-        ? Math.ceil((artifact.expires_at.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-        : 0;
-
-      return {
-        artifact_id: artifact.consent_artifact_id,
-        data_fiduciary_id: artifact.data_fiduciary_id,
-        purpose_id: artifact.purpose_id,
-        purpose_title: artifact.purpose_version.title,
-        expires_at: artifact.expires_at!,
-        days_until_expiry: daysUntilExpiry,
-        external_user_id: metadata?.external_user_id,
-      };
-    });
-
-    // Log audit
-    logger.info(`Expiring Consent Retrieved - Count: ${expiringArtifacts.length}, Within: ${withinDays} days`);
-
-    return {
-      success: true,
-      message: "Expiring consents retrieved successfully",
-      data: {
-        expiring_consents: expiringArtifacts,
-        total_count: expiringArtifacts.length,
-        within_days: withinDays,
-      },
-    };
-  } catch (error) {
-    logger.error("Error getting expiring consents:", error);
-    throw error;
-  }
-};
-
-/**
  * Initiate renewal request
  * POST /api/v1/consents/renew
  * Supports both user-initiated and fiduciary-initiated renewal
@@ -1581,6 +1487,8 @@ export const initiateRenewal = async (
 ): Promise<ConsentTypes.ApiResponse<ConsentTypes.InitiateRenewalResponse>> => {
   try {
     const initiatedBy = input.initiated_by || "FIDUCIARY";
+
+    console.log("input", input);
     
     // Calculate new expiry date
     let extendByDays = 365; // Default 1 year
@@ -1623,14 +1531,9 @@ export const initiateRenewal = async (
         throw new AppError("Consent artifact not found", 404);
       }
 
-      // Validate artifact is ACTIVE
-      if (artifact.status !== "ACTIVE") {
-        throw new AppError("Only active consents can be renewed", 400);
-      }
-
-      // Validate expiry threshold
-      if (artifact.expires_at && artifact.expires_at < new Date()) {
-        throw new AppError("Cannot renew an expired consent", 400);
+      // Validate artifact is ACTIVE or EXPIRED (allow renewal of expired consents)
+      if (artifact.status !== "ACTIVE" && artifact.status !== "EXPIRED") {
+        throw new AppError("Only active or expired consents can be renewed", 400);
       }
 
       // Granular renewal: validate purpose_ids if provided
@@ -1700,22 +1603,27 @@ export const initiateRenewal = async (
         throw new AppError("No active consents found for renewal", 404);
       }
     } else {
-      throw new AppError("Either artifact_id or (external_user_id/data_principal_id) must be provided", 400);
+      throw new AppError("Either consent_artifact_id (or artifact_id) or (external_user_id/data_principal_id) must be provided", 400);
     }
 
     // Process each artifact for renewal request
     const artifactIds: string[] = [];
     let currentExpiresAt: Date | undefined;
     const requestedExpiresAt = new Date();
+    const now = new Date();
     
     for (const artifact of artifacts) {
       artifactIds.push(artifact.consent_artifact_id);
-      const artifactExpiresAt = artifact.expires_at || new Date();
+      // If consent is expired, use current date as base; otherwise use expires_at
+      const artifactExpiresAt = artifact.expires_at && artifact.expires_at >= now 
+        ? artifact.expires_at 
+        : now;
       if (!currentExpiresAt || artifactExpiresAt < currentExpiresAt) {
         currentExpiresAt = artifactExpiresAt;
       }
     }
 
+    // Calculate new expiry: if expired, extend from today; otherwise extend from current expiry
     requestedExpiresAt.setTime(currentExpiresAt!.getTime());
     requestedExpiresAt.setDate(requestedExpiresAt.getDate() + extendByDays);
 
@@ -1749,7 +1657,7 @@ export const initiateRenewal = async (
           consent_status: "ACTIVE",
           initiator: initiatedBy === "USER" ? "USER" : "FIDUCIARY",
           audit_hash: generateAuditHash({
-            action: "RENEWAL_INITIATED",
+            action: "RENEWAL_EXTENDED",
             artifact_id: artifact.consent_artifact_id,
             timestamp: new Date(),
           }),
@@ -1781,7 +1689,7 @@ export const initiateRenewal = async (
         renewal_request_id: renewalRequestId,
         artifact_id: artifactIds.length === 1 ? artifactIds[0] : undefined,
         artifact_ids: artifactIds.length > 1 ? artifactIds : undefined,
-        status: "RENEWAL_PENDING" as const,
+        status: "RENEWAL_EXTENDED" as const,
         current_expires_at: currentExpiresAt,
         requested_expires_at: requestedExpiresAt,
         transparency_info: transparencyInfo,

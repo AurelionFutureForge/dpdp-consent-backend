@@ -58,7 +58,7 @@ router.post("/validate-bulk", ConsentController.ValidateBulkConsentsController);
 /**
  * Initiate renewal request
  * POST /api/v1/consents/renew
- * Body: { artifact_id, data_fiduciary_id, requested_extension? (e.g., "+365d"), extend_by_days? }
+ * Body: { consent_artifact_id (or artifact_id), data_fiduciary_id?, requested_extension? (e.g., "+365d"), extend_by_days?, initiated_by?, purpose_ids? }
  */
 router.post("/renew", ConsentController.InitiateRenewalController);
 

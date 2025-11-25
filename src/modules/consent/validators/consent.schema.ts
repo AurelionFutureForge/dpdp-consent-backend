@@ -132,23 +132,18 @@ export const WithdrawConsentSchema = z.object({
  */
 export const InitiateRenewalSchema = z.object({
   body: z.object({
-    artifact_id: z.string().uuid("Invalid artifact ID").optional(),
+    artifact_id: z.string().uuid("Invalid consent artifact ID").optional(),
     data_fiduciary_id: z.string().uuid("Invalid data fiduciary ID").optional(),
-    external_user_id: z.string().min(1, "External user ID is required if artifact_id not provided").optional(),
-    data_principal_id: z.string().uuid("Invalid data principal ID").optional(),
     purpose_ids: z.array(z.string().uuid("Invalid purpose ID")).optional(),
     requested_extension: z.string().regex(/^\+\d+d$/, "Requested extension must be in format like '+365d', '+180d'").optional(),
     extend_by_days: z.number().int().positive("Extension period must be positive").optional(),
     initiated_by: z.enum(["USER", "FIDUCIARY"]).default("FIDUCIARY"),
-  }).refine((data) => {
-    // Either artifact_id OR (external_user_id/data_principal_id) must be provided
-    return data.artifact_id || data.external_user_id || data.data_principal_id;
-  }, {
-    message: "Either artifact_id or (external_user_id/data_principal_id) must be provided",
-  }).refine((data) => data.requested_extension || data.extend_by_days, {
-    message: "Either requested_extension or extend_by_days must be provided",
-  }),
-}).transform(({ body }) => body);
+  })
+}).transform(({ body }) => ({
+  ...body,
+  // Use consent_artifact_id if provided, otherwise fall back to artifact_id
+  artifact_id: body.artifact_id,
+}));
 
 /**
  * Schema for renewing consent (legacy - direct renewal)
