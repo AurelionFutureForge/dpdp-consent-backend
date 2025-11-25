@@ -1229,6 +1229,7 @@ export const listConsents = async (
 
     const where: any = {
       is_deleted: false,
+      status : "ACTIVE",
     };
 
     if (filters.data_fiduciary_id) {

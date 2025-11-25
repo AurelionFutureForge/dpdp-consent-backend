@@ -193,7 +193,7 @@ export const GetUserConsentsSchema = z.object({
     external_user_id: z.string().min(1, "External user ID is required"),
   }),
   query: z.object({
-    status: z.enum(["PENDING", "ACTIVE", "WITHDRAWN", "EXPIRED"]).optional(),
+    status: z.enum(["PENDING", "ACTIVE", "WITHDRAWN", "EXPIRED"]).optional().default("ACTIVE"),
     page: z.string().optional().transform((val) => (val ? parseInt(val) : 1)),
     limit: z.string().optional().transform((val) => (val ? parseInt(val) : 10)),
   }).optional(),
