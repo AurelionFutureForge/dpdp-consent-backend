@@ -130,7 +130,7 @@ export interface ConsentArtifactPurpose {
  * Webhook payload sent to data fiduciary (Step 12 in diagram)
  */
 export interface ConsentWebhookPayload {
-  event_type: 'consent.granted' | 'consent.updated' | 'consent.withdrawn' | 'consent.expired';
+  event_type: 'consent.granted' | 'consent.updated' | 'consent.withdrawn' | 'consent.expired' | 'consent.renewal_initiated' | 'consent.renewed';
   artifact_id: string;
   data_fiduciary_id: string;
   user_id: string; // External user ID
@@ -139,11 +139,14 @@ export interface ConsentWebhookPayload {
     purpose_version_id: string;
     title: string;
   }[];
-  status: 'ACTIVE' | 'WITHDRAWN' | 'EXPIRED';
+  status: 'ACTIVE' | 'WITHDRAWN' | 'EXPIRED' | 'RENEWAL_PENDING';
   valid_till: Date | null;
   granted_at: Date;
   updated_at?: Date;
   withdrawn_at?: Date;
+  renewed_at?: Date;
+  old_expires_at?: Date;
+  new_expires_at?: Date;
   metadata?: Record<string, any>;
 }
 
@@ -281,7 +284,111 @@ export interface WithdrawConsentResponse {
 }
 
 /**
- * Consent renewal request
+ * Get expiring consents input
+ */
+export interface GetExpiringConsentsInput {
+  data_fiduciary_id?: string; // Optional: filter by fiduciary
+  within: string; // e.g., "30d", "7d", "90d"
+}
+
+/**
+ * Expiring consent artifact
+ */
+export interface ExpiringConsentArtifact {
+  artifact_id: string;
+  data_fiduciary_id: string;
+  purpose_id: string;
+  purpose_title: string;
+  expires_at: Date;
+  days_until_expiry: number;
+  external_user_id?: string;
+}
+
+/**
+ * Response for expiring consents
+ */
+export interface GetExpiringConsentsResponse {
+  expiring_consents: ExpiringConsentArtifact[];
+  total_count: number;
+  within_days: number;
+}
+
+/**
+ * Initiate renewal request input
+ * Supports both fiduciary-initiated and user-initiated renewal
+ */
+export interface InitiateRenewalInput {
+  artifact_id?: string; // Optional: specific artifact to renew
+  data_fiduciary_id?: string; // Optional: filter by fiduciary
+  external_user_id?: string; // Optional: for user-initiated renewal
+  data_principal_id?: string; // Optional: for user-initiated renewal
+  purpose_ids?: string[]; // Optional: granular renewal - specific purposes to renew
+  requested_extension?: string; // e.g., "+365d", "+180d"
+  extend_by_days?: number; // Alternative: number of days to extend
+  initiated_by?: 'USER' | 'FIDUCIARY'; // Who initiated the renewal
+}
+
+/**
+ * Response after initiating renewal
+ */
+export interface InitiateRenewalResponse {
+  renewal_request_id: string;
+  artifact_id?: string; // Single artifact if specific
+  artifact_ids?: string[]; // Multiple artifacts if bulk renewal
+  status: 'RENEWAL_PENDING';
+  current_expires_at?: Date;
+  requested_expires_at: Date;
+  transparency_info?: {
+    retention_policy_changes?: string;
+    purpose_changes?: string;
+    data_field_changes?: string;
+    other_changes?: string;
+  };
+  message: string;
+}
+
+/**
+ * Confirm renewal input
+ * Supports granular renewal - user can renew specific purposes
+ */
+export interface ConfirmRenewalInput {
+  renewal_request_id: string; // Renewal request ID from initiate
+  artifact_id?: string; // Optional: specific artifact (for backward compatibility)
+  data_fiduciary_id?: string; // Optional: for validation
+  purpose_ids?: string[]; // Optional: granular renewal - specific purposes to confirm
+  agree: boolean;
+  ip_address?: string;
+  user_agent?: string;
+  language_code?: string;
+}
+
+/**
+ * Response after confirming renewal
+ */
+export interface ConfirmRenewalResponse {
+  artifact_id?: string; // Single artifact if specific
+  artifact_ids?: string[]; // Multiple artifacts if bulk renewal
+  new_artifact_ids?: string[]; // New version artifact IDs if versioning is used
+  status: 'ACTIVE';
+  old_expires_at?: Date;
+  new_expires_at: Date;
+  version?: number;
+  renewed_purposes?: {
+    purpose_id: string;
+    purpose_title: string;
+    old_expires_at: Date;
+    new_expires_at: Date;
+  }[];
+  transparency_summary?: {
+    retention_policy: string;
+    data_fields: string[];
+    processing_activities: string[];
+  };
+  message: string;
+}
+
+/**
+ * Consent renewal request (legacy - for direct renewal without confirmation flow)
  */
 export interface RenewConsentInput {
   artifact_id: string;
@@ -290,7 +397,7 @@ export interface RenewConsentInput {
 }
 
 /**
- * Response after consent renewal
+ * Response after consent renewal (legacy)
  */
 export interface RenewConsentResponse {
   artifact_id: string;
@@ -338,4 +445,59 @@ export interface ConsentAnalytics {
     withdrawn: number;
     expired: number;
   }[];
+}
+
+/**
+ * Get active consents for data principal (for CMS dashboard)
+ * Displays all active consents with purposes, expiration dates, and metadata
+ */
+export interface GetActiveConsentsForPrincipalInput {
+  external_user_id?: string; // External user ID from fiduciary's system
+  data_principal_id?: string; // Internal principal ID
+  data_fiduciary_id?: string; // Optional: filter by fiduciary
+  include_expiring?: boolean; // Include expiring consents flag
+  days_before_expiry?: number; // Days before expiry to flag as expiring
+}
+
+/**
+ * Active consent detail for dashboard display
+ */
+export interface ActiveConsentDetail {
+  artifact_id: string;
+  data_fiduciary: {
+    data_fiduciary_id: string;
+    name: string;
+    legal_name: string;
+    logo_url?: string;
+  };
+  purpose: {
+    purpose_id: string;
+    purpose_version_id: string;
+    title: string;
+    description: string;
+    category?: {
+      purpose_category_id: string;
+      name: string;
+    };
+  };
+  granted_at: Date;
+  expires_at: Date;
+  days_until_expiry: number;
+  is_expiring_soon: boolean;
+  retention_policy: {
+    retention_period_days: number;
+    withdrawal_policy: string;
+  };
+  data_fields: string[];
+  processing_activities: string[];
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Response for active consents
+ */
+export interface GetActiveConsentsForPrincipalResponse {
+  consents: ActiveConsentDetail[];
+  total_count: number;
+  expiring_count: number;
 }

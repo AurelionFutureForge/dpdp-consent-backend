@@ -281,3 +281,27 @@ export const ValidateBulkConsentsController = async (
     next(error);
   }
 };
+
+/**
+ * Controller to initiate renewal request
+ * POST /api/v1/consents/renew
+ * 
+ * @param {Request} req - Express request object
+ * @param {Response} res - Express response object
+ * @param {NextFunction} next - Express next middleware function
+ * 
+ * @returns {Promise<void>} Sends JSON response
+ */
+export const InitiateRenewalController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const input = ConsentSchema.InitiateRenewalSchema.parse({ body: req.body });
+    const response = await ConsentService.initiateRenewal(input);
+    sendResponse(res, 201, response.success, response.message, response.data);
+  } catch (error) {
+    next(error);
+  }
+};

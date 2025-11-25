@@ -56,6 +56,13 @@ router.get("/:cms_request_id", ConsentController.GetConsentNoticeController);
 router.post("/validate-bulk", ConsentController.ValidateBulkConsentsController);
 
 /**
+ * Initiate renewal request
+ * POST /api/v1/consents/renew
+ * Body: { artifact_id, data_fiduciary_id, requested_extension? (e.g., "+365d"), extend_by_days? }
+ */
+router.post("/renew", ConsentController.InitiateRenewalController);
+
+/**
  * FIDUCIARY-SPECIFIC ROUTES
  * These routes are scoped to a specific data fiduciary
  * Path prefix: /api/v1/data-fiduciaries/:data_fiduciary_id/consents
@@ -82,7 +89,7 @@ router.get("/:data_fiduciary_id/consents/:artifact_id/history", ConsentControlle
 
 /**
  * Withdraw consent
- * POST /api/v1/data-fiduciaries/:data_fiduciary_id/consents/:artifact_id/withdraw
+ * POST /api/v1/:data_fiduciary_id/consents/:artifact_id/withdraw
  * Body: { reason?, notes? }
  */
 router.post("/:data_fiduciary_id/consents/:artifact_id/withdraw", ConsentController.WithdrawConsentController);

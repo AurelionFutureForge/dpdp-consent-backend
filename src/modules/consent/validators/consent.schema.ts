@@ -126,7 +126,32 @@ export const WithdrawConsentSchema = z.object({
 }));
 
 /**
- * Schema for renewing consent
+ * Schema for initiating renewal request
+ * POST /api/v1/consents/renew
+ * Supports both user-initiated and fiduciary-initiated renewal
+ */
+export const InitiateRenewalSchema = z.object({
+  body: z.object({
+    artifact_id: z.string().uuid("Invalid artifact ID").optional(),
+    data_fiduciary_id: z.string().uuid("Invalid data fiduciary ID").optional(),
+    external_user_id: z.string().min(1, "External user ID is required if artifact_id not provided").optional(),
+    data_principal_id: z.string().uuid("Invalid data principal ID").optional(),
+    purpose_ids: z.array(z.string().uuid("Invalid purpose ID")).optional(),
+    requested_extension: z.string().regex(/^\+\d+d$/, "Requested extension must be in format like '+365d', '+180d'").optional(),
+    extend_by_days: z.number().int().positive("Extension period must be positive").optional(),
+    initiated_by: z.enum(["USER", "FIDUCIARY"]).default("FIDUCIARY"),
+  }).refine((data) => {
+    // Either artifact_id OR (external_user_id/data_principal_id) must be provided
+    return data.artifact_id || data.external_user_id || data.data_principal_id;
+  }, {
+    message: "Either artifact_id or (external_user_id/data_principal_id) must be provided",
+  }).refine((data) => data.requested_extension || data.extend_by_days, {
+    message: "Either requested_extension or extend_by_days must be provided",
+  }),
+}).transform(({ body }) => body);
+
+/**
+ * Schema for renewing consent (legacy - direct renewal)
  * POST /api/v1/data-fiduciaries/:data_fiduciary_id/consents/:artifact_id/renew
  */
 export const RenewConsentSchema = z.object({
@@ -229,3 +254,25 @@ export const WebhookRetrySchema = z.object({
     artifact_id: z.string().uuid("Invalid artifact ID"),
   }),
 }).transform(({ params }) => params);
+
+/**
+ * Schema for getting active consents for data principal (CMS dashboard)
+ * GET /api/v1/consents/active?external_user_id=xxx&data_fiduciary_id=xxx
+ */
+export const GetActiveConsentsForPrincipalSchema = z.object({
+  query: z.object({
+    external_user_id: z.string().min(1, "External user ID is required").optional(),
+    data_principal_id: z.string().uuid("Invalid data principal ID").optional(),
+    data_fiduciary_id: z.string().uuid("Invalid data fiduciary ID").optional(),
+    include_expiring: z.string().optional(),
+    days_before_expiry: z.string().optional(),
+  }).refine((data) => data.external_user_id || data.data_principal_id, {
+    message: "Either external_user_id or data_principal_id must be provided",
+  }),
+}).transform(({ query }) => ({
+  external_user_id: query.external_user_id,
+  data_principal_id: query.data_principal_id,
+  data_fiduciary_id: query.data_fiduciary_id,
+  include_expiring: query.include_expiring === "true",
+  days_before_expiry: query.days_before_expiry ? parseInt(query.days_before_expiry) : 30,
+}));

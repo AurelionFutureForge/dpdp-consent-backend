@@ -1472,3 +1472,324 @@ export const getConsentHistory = async (
     throw error;
   }
 };
+
+/**
+ * Get expiring consents
+ * GET /api/v1/consents/expiring?within=30d
+ * 
+ * @param {ConsentTypes.GetExpiringConsentsInput} input - Input for getting expiring consents
+ * @returns {Promise<ConsentTypes.ApiResponse<ConsentTypes.GetExpiringConsentsResponse>>}
+ */
+export const getExpiringConsents = async (
+  input: ConsentTypes.GetExpiringConsentsInput
+): Promise<ConsentTypes.ApiResponse<ConsentTypes.GetExpiringConsentsResponse>> => {
+  try {
+    // Parse "within" parameter (e.g., "30d" -> 30 days)
+    const withinMatch = input.within.match(/^(\d+)d$/);
+    if (!withinMatch) {
+      throw new AppError("Invalid 'within' parameter format. Use format like '30d', '7d', '90d'", 400);
+    }
+    const withinDays = parseInt(withinMatch[1], 10);
+
+    // Calculate expiry threshold date
+    const thresholdDate = new Date();
+    thresholdDate.setDate(thresholdDate.getDate() + withinDays);
+
+    // Build where clause
+    const where: any = {
+      is_deleted: false,
+      status: "ACTIVE",
+      expires_at: {
+        lte: thresholdDate,
+        gte: new Date(), // Not already expired
+      },
+    };
+
+    if (input.data_fiduciary_id) {
+      where.data_fiduciary_id = input.data_fiduciary_id;
+    }
+
+    // Fetch expiring consents
+    const expiringConsents = await prisma.consentArtifact.findMany({
+      where,
+      include: {
+        purpose_version: {
+          select: {
+            purpose_id: true,
+            title: true,
+          },
+        },
+        fiduciary: {
+          select: {
+            data_fiduciary_id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        expires_at: "asc", // Soonest expiring first
+      },
+    });
+
+    // Transform to response format
+    const expiringArtifacts: ConsentTypes.ExpiringConsentArtifact[] = expiringConsents.map(artifact => {
+      const metadata = artifact.metadata as any;
+      const daysUntilExpiry = artifact.expires_at
+        ? Math.ceil((artifact.expires_at.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
+
+      return {
+        artifact_id: artifact.consent_artifact_id,
+        data_fiduciary_id: artifact.data_fiduciary_id,
+        purpose_id: artifact.purpose_id,
+        purpose_title: artifact.purpose_version.title,
+        expires_at: artifact.expires_at!,
+        days_until_expiry: daysUntilExpiry,
+        external_user_id: metadata?.external_user_id,
+      };
+    });
+
+    // Log audit
+    logger.info(`Expiring Consent Retrieved - Count: ${expiringArtifacts.length}, Within: ${withinDays} days`);
+
+    return {
+      success: true,
+      message: "Expiring consents retrieved successfully",
+      data: {
+        expiring_consents: expiringArtifacts,
+        total_count: expiringArtifacts.length,
+        within_days: withinDays,
+      },
+    };
+  } catch (error) {
+    logger.error("Error getting expiring consents:", error);
+    throw error;
+  }
+};
+
+/**
+ * Initiate renewal request
+ * POST /api/v1/consents/renew
+ * Supports both user-initiated and fiduciary-initiated renewal
+ * Supports granular renewal (specific purposes)
+ * 
+ * @param {ConsentTypes.InitiateRenewalInput} input - Renewal initiation input
+ * @returns {Promise<ConsentTypes.ApiResponse<ConsentTypes.InitiateRenewalResponse>>}
+ */
+export const initiateRenewal = async (
+  input: ConsentTypes.InitiateRenewalInput
+): Promise<ConsentTypes.ApiResponse<ConsentTypes.InitiateRenewalResponse>> => {
+  try {
+    const initiatedBy = input.initiated_by || "FIDUCIARY";
+    
+    // Calculate new expiry date
+    let extendByDays = 365; // Default 1 year
+    if (input.extend_by_days) {
+      extendByDays = input.extend_by_days;
+    } else if (input.requested_extension) {
+      const extensionMatch = input.requested_extension.match(/^\+(\d+)d$/);
+      if (extensionMatch) {
+        extendByDays = parseInt(extensionMatch[1], 10);
+      }
+    }
+
+    let artifacts: any[] = [];
+    let renewalRequestId = crypto.randomUUID();
+
+    // Case 1: Specific artifact renewal
+    if (input.artifact_id) {
+      const artifact = await prisma.consentArtifact.findFirst({
+        where: {
+          consent_artifact_id: input.artifact_id,
+          data_fiduciary_id: input.data_fiduciary_id,
+          is_deleted: false,
+        },
+        include: {
+          fiduciary: true,
+          principal: true,
+          purpose_version: {
+            include: {
+              purpose: {
+                include: {
+                  category: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!artifact) {
+        throw new AppError("Consent artifact not found", 404);
+      }
+
+      // Validate artifact is ACTIVE
+      if (artifact.status !== "ACTIVE") {
+        throw new AppError("Only active consents can be renewed", 400);
+      }
+
+      // Validate expiry threshold
+      if (artifact.expires_at && artifact.expires_at < new Date()) {
+        throw new AppError("Cannot renew an expired consent", 400);
+      }
+
+      // Granular renewal: validate purpose_ids if provided
+      if (input.purpose_ids && input.purpose_ids.length > 0) {
+        if (!input.purpose_ids.includes(artifact.purpose_id)) {
+          throw new AppError("Specified purpose_ids do not match the artifact", 400);
+        }
+      }
+
+      artifacts = [artifact];
+    } 
+    // Case 2: User-initiated renewal (by external_user_id or data_principal_id)
+    else if (input.external_user_id || input.data_principal_id) {
+      const where: any = {
+        is_deleted: false,
+        status: "ACTIVE",
+        expires_at: {
+          gte: new Date(), // Not expired
+        },
+      };
+
+      if (input.data_fiduciary_id) {
+        where.data_fiduciary_id = input.data_fiduciary_id;
+      }
+
+      // Find principal
+      let principal;
+      if (input.data_principal_id) {
+        principal = await prisma.dataPrincipal.findUnique({
+          where: { data_principal_id: input.data_principal_id },
+        });
+      } else if (input.external_user_id) {
+        principal = await prisma.dataPrincipal.findUnique({
+          where: { external_id: input.external_user_id },
+        });
+      }
+
+      if (!principal) {
+        throw new AppError("Data principal not found", 404);
+      }
+
+      where.data_principal_id = principal.data_principal_id;
+
+      // If purpose_ids specified, filter by purposes
+      if (input.purpose_ids && input.purpose_ids.length > 0) {
+        where.purpose_id = { in: input.purpose_ids };
+      }
+
+      artifacts = await prisma.consentArtifact.findMany({
+        where,
+        include: {
+          fiduciary: true,
+          principal: true,
+          purpose_version: {
+            include: {
+              purpose: {
+                include: {
+                  category: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (artifacts.length === 0) {
+        throw new AppError("No active consents found for renewal", 404);
+      }
+    } else {
+      throw new AppError("Either artifact_id or (external_user_id/data_principal_id) must be provided", 400);
+    }
+
+    // Process each artifact for renewal request
+    const artifactIds: string[] = [];
+    let currentExpiresAt: Date | undefined;
+    const requestedExpiresAt = new Date();
+    
+    for (const artifact of artifacts) {
+      artifactIds.push(artifact.consent_artifact_id);
+      const artifactExpiresAt = artifact.expires_at || new Date();
+      if (!currentExpiresAt || artifactExpiresAt < currentExpiresAt) {
+        currentExpiresAt = artifactExpiresAt;
+      }
+    }
+
+    requestedExpiresAt.setTime(currentExpiresAt!.getTime());
+    requestedExpiresAt.setDate(requestedExpiresAt.getDate() + extendByDays);
+
+    // Store renewal request in metadata for each artifact
+    for (const artifact of artifacts) {
+      const metadata = artifact.metadata as any;
+      await prisma.consentArtifact.update({
+        where: { consent_artifact_id: artifact.consent_artifact_id },
+        data: {
+          metadata: {
+            ...metadata,
+            renewal_request: {
+              renewal_request_id: renewalRequestId,
+              requested_at: new Date(),
+              requested_extension_days: extendByDays,
+              requested_expires_at: requestedExpiresAt,
+              status: "PENDING",
+              initiated_by: initiatedBy,
+              purpose_ids: input.purpose_ids || [artifact.purpose_id],
+            },
+          },
+        },
+      });
+
+      // Log audit
+      await prisma.auditLog.create({
+        data: {
+          user_id: artifact.data_principal_id,
+          consent_artifact_id: artifact.consent_artifact_id,
+          action: "CREATE",
+          consent_status: "ACTIVE",
+          initiator: initiatedBy === "USER" ? "USER" : "FIDUCIARY",
+          audit_hash: generateAuditHash({
+            action: "RENEWAL_INITIATED",
+            artifact_id: artifact.consent_artifact_id,
+            timestamp: new Date(),
+          }),
+          details: {
+            renewal_request_id: renewalRequestId,
+            requested_extension_days: extendByDays,
+            purpose_ids: input.purpose_ids || [artifact.purpose_id],
+          },
+        },
+      });
+    }
+
+    // Get transparency information (retention policies, etc.)
+    const firstArtifact = artifacts[0];
+    const purpose = firstArtifact.purpose_version.purpose;
+    const transparencyInfo: ConsentTypes.InitiateRenewalResponse["transparency_info"] = {
+      retention_policy_changes: `Retention period: ${purpose.retention_period_days || 365} days`,
+      purpose_changes: purpose.title,
+      data_field_changes: purpose.data_fields?.join(", ") || "No changes",
+      other_changes: `Extension period: ${extendByDays} days`,
+    };
+
+    logger.info(`Consent Renewal Initiated - Request ID: ${renewalRequestId}, Artifacts: ${artifactIds.length}, Initiated by: ${initiatedBy}`);
+
+    return {
+      success: true,
+      message: "Renewal request initiated successfully",
+      data: {
+        renewal_request_id: renewalRequestId,
+        artifact_id: artifactIds.length === 1 ? artifactIds[0] : undefined,
+        artifact_ids: artifactIds.length > 1 ? artifactIds : undefined,
+        status: "RENEWAL_PENDING" as const,
+        current_expires_at: currentExpiresAt,
+        requested_expires_at: requestedExpiresAt,
+        transparency_info: transparencyInfo,
+        message: "Renewal request created. Awaiting user confirmation.",
+      },
+    };
+  } catch (error) {
+    logger.error("Error initiating renewal:", error);
+    throw error;
+  }
+};

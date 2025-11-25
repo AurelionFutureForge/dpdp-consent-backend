@@ -24,7 +24,8 @@ export type NotificationType =
   | 'consent_withdrawn'
   | 'consent_expired'
   | 'consent_renewal_reminder'
-  | 'consent_updated';
+  | 'consent_updated'
+  | 'consent_renewed';
 
 /**
  * Notification Channels
@@ -317,6 +318,16 @@ function buildNotificationContent(
         push_body: 'Your consent has been updated',
       };
 
+    case 'consent_renewed':
+      return {
+        subject: translations.consent_renewed_subject,
+        body: `Dear User,\n\nYour consent has been successfully renewed.\n\nArtifact ID: ${metadata.artifact_id}\nFiduciary: ${metadata.fiduciary_name}\nPurposes: ${metadata.purpose_titles?.join(', ') || 'N/A'}\nNew Expiry: ${metadata.expires_at ? new Date(metadata.expires_at).toLocaleDateString() : 'N/A'}\n\nThank you.`,
+        html: `<h2>Consent Renewed</h2><p>Your consent has been successfully renewed.</p><p>New expiry date: ${metadata.expires_at ? new Date(metadata.expires_at).toLocaleDateString() : 'N/A'}</p>`,
+        sms_text: `Your consent for ${metadata.fiduciary_name} has been renewed. New expiry: ${metadata.expires_at ? new Date(metadata.expires_at).toLocaleDateString() : 'N/A'}`,
+        push_title: translations.consent_renewed_subject,
+        push_body: `Consent renewed for ${metadata.fiduciary_name}`,
+      };
+
     default:
       return {
         subject: 'Notification',
@@ -340,6 +351,7 @@ function getTranslations(language: string): Record<string, string> {
       consent_expired_subject: 'Consent Expired',
       consent_renewal_reminder_subject: 'Consent Expiring Soon',
       consent_updated_subject: 'Consent Updated',
+      consent_renewed_subject: 'Consent Renewed Successfully',
     },
     hi: {
       consent_granted_subject: 'सहमति सफलतापूर्वक दर्ज की गई',
@@ -347,6 +359,7 @@ function getTranslations(language: string): Record<string, string> {
       consent_expired_subject: 'सहमति समाप्त हो गई',
       consent_renewal_reminder_subject: 'सहमति जल्द समाप्त हो रही है',
       consent_updated_subject: 'सहमति अपडेट की गई',
+      consent_renewed_subject: 'सहमति सफलतापूर्वक नवीकृत की गई',
     },
   };
 
