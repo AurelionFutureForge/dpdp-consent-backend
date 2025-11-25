@@ -128,6 +128,7 @@ export const initiateConsent = async (
           duration: input.duration,
           language: input.language || "en",
           external_user_id: input.user_id,
+          redirect_url: input.redirect_url,
           ...input.metadata,
         },
       },
@@ -167,6 +168,7 @@ export const initiateConsent = async (
         notice_url,
         status: "INITIATED" as const,
         expires_at: expiresAt,
+        redirect_url: input.redirect_url, // ✅ Return redirect URL
       },
     };
   } catch (error) {
@@ -276,9 +278,31 @@ export const getConsentNotice = async (
     const maxRetention = Math.max(...purposes.map(p => p.retention_period_days || 365));
 
     // Get mandatory purpose IDs
-    const mandatoryPurposes = purposes
-      .filter(p => p.is_mandatory)
-      .map(p => p.purpose_id);
+    const mandatoryPurposes = purposes.filter(p => p.is_mandatory).map(p => p.purpose_id);
+
+    // ✅ Get redirect URL: Use metadata.redirect_url, or fallback to DataFiduciary's active platform submission URL
+    let redirectUrl = metadata?.redirect_url;
+    
+    if (!redirectUrl) {
+      // Fetch active (APPROVED) platform submission with WEBSITE type
+      const activePlatform = await prisma.platformSubmission.findFirst({
+        where: {
+          data_fiduciary_id: consentRequest.data_fiduciary_id,
+          status: "APPROVED",
+          platform_type: "WEBSITE",
+        },
+        orderBy: {
+          approved_at: "desc", // Get most recently approved
+        },
+      });
+
+      if (activePlatform) {
+        redirectUrl = activePlatform.url;
+        logger.info(`Using fallback redirect URL from platform submission: ${redirectUrl} for fiduciary: ${consentRequest.data_fiduciary_id}`);
+      } else {
+        logger.warn(`No redirect URL in metadata and no active platform submission found for fiduciary: ${consentRequest.data_fiduciary_id}`);
+      }
+    }
 
     // Update viewed timestamp
     await prisma.consentArtifact.update({
@@ -339,6 +363,7 @@ export const getConsentNotice = async (
         },
         valid_until: consentRequest.expires_at!,
         mandatory_purposes: mandatoryPurposes,
+        redirect_url: redirectUrl || undefined, // ✅ Return redirect URL (from metadata or platform submission fallback)
       },
     };
   } catch (error) {
@@ -596,6 +621,37 @@ export const submitConsent = async (
       logger.error("Failed to send notification:", err);
     });
 
+    // ✅ Prepare redirect URL with consent status
+    // Use metadata.redirect_url, or fallback to DataFiduciary's active platform submission URL
+    let redirectUrl = metadata?.redirect_url;
+    
+    if (!redirectUrl) {
+      // Fetch active (APPROVED) platform submission with WEBSITE type
+      const activePlatform = await prisma.platformSubmission.findFirst({
+        where: {
+          data_fiduciary_id: consentRequest.data_fiduciary_id,
+          status: "APPROVED",
+          platform_type: "WEBSITE",
+        },
+        orderBy: {
+          approved_at: "desc", // Get most recently approved
+        },
+      });
+
+      if (activePlatform) {
+        redirectUrl = activePlatform.url;
+        logger.info(`Using fallback redirect URL from platform submission: ${redirectUrl} for fiduciary: ${consentRequest.data_fiduciary_id}`);
+      } else {
+        logger.warn(`No redirect URL in metadata and no active platform submission found for fiduciary: ${consentRequest.data_fiduciary_id}`);
+      }
+    }
+
+    const redirectParams = redirectUrl ? {
+      consent_id: validArtifacts[0]!.consent_artifact_id,
+      status: 'granted',
+      timestamp: new Date().toISOString(),
+    } : undefined;
+
     // Return response
     return {
       success: true,
@@ -611,6 +667,8 @@ export const submitConsent = async (
           granted_at: grantedAt,
         })),
         hash: consentHash,
+        redirect_url: redirectUrl, // ✅ Return redirect URL from initiate
+        redirect_params: redirectParams, // ✅ Return params to append
       },
     };
   } catch (error) {

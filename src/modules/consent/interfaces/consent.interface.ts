@@ -14,6 +14,7 @@ export interface InitiateConsentInput {
   duration?: number; // Optional: custom duration in days
   metadata?: Record<string, any>; // Additional context
   language?: string; // Preferred language for consent notice
+  redirect_url?: string; // URL to redirect user after consent submission
 }
 
 /**
@@ -24,6 +25,7 @@ export interface InitiateConsentResponse {
   notice_url: string; // URL to redirect user to consent notice page
   status: 'INITIATED';
   expires_at: Date; // When this consent request expires
+  redirect_url?: string; // Stored redirect URL (echoed back)
 }
 
 /**
@@ -52,6 +54,7 @@ export interface ConsentNoticeData {
   };
   valid_until: Date;
   mandatory_purposes: string[]; // Purpose IDs that are mandatory
+  redirect_url?: string; // URL to redirect user after consent submission
 }
 
 /**
@@ -95,6 +98,12 @@ export interface SubmitConsentResponse {
   valid_till: Date;
   purposes: ConsentArtifactPurpose[];
   hash: string; // SHA256 hash of consent artifact
+  redirect_url?: string; // URL to redirect user to (with consent status)
+  redirect_params?: { // Query parameters to append to redirect URL
+    consent_id: string;
+    status: string;
+    timestamp: string;
+  };
 }
 
 /**
@@ -170,6 +179,7 @@ export interface ConsentRequest {
   duration?: number;
   metadata?: Record<string, any>;
   language?: string;
+  redirect_url?: string; // URL to redirect after consent
   requested_at: Date;
   expires_at: Date;
   viewed_at?: Date;

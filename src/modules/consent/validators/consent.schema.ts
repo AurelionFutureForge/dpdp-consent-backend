@@ -17,6 +17,7 @@ export const InitiateConsentSchema = z.object({
     duration: z.number().int().positive("Duration must be positive").optional(),
     metadata: z.record(z.any()).optional(),
     language: z.string().min(2).max(5).default("en"),
+    redirect_url: z.string().url("Invalid redirect URL").optional(),
   }),
 }).transform(({ body }) => body);
 
