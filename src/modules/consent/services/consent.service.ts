@@ -68,12 +68,31 @@ export const initiateConsent = async (
     });
 
     if (!principal) {
+      // Create new principal with optional email and phone
       principal = await prisma.dataPrincipal.create({
         data: {
           external_id: input.user_id,
           language: input.language || "en",
+          email: input.email,
+          phone: input.phone,
         },
       });
+    } else {
+      // Update existing principal with email and phone if provided
+      const updateData: { email?: string; phone?: string } = {};
+      if (input.email) {
+        updateData.email = input.email;
+      }
+      if (input.phone) {
+        updateData.phone = input.phone;
+      }
+      
+      if (Object.keys(updateData).length > 0) {
+        principal = await prisma.dataPrincipal.update({
+          where: { data_principal_id: principal.data_principal_id },
+          data: updateData,
+        });
+      }
     }
 
     // Create principal-fiduciary mapping if not exists
@@ -129,6 +148,12 @@ export const initiateConsent = async (
           language: input.language || "en",
           external_user_id: input.user_id,
           redirect_url: input.redirect_url,
+          ...(input.email || input.phone ? {
+            user_details: {
+              ...(input.email && { email: input.email }),
+              ...(input.phone && { phone: input.phone }),
+            },
+          } : {}),
           ...input.metadata,
         },
       },

@@ -15,6 +15,8 @@ export interface InitiateConsentInput {
   metadata?: Record<string, any>; // Additional context
   language?: string; // Preferred language for consent notice
   redirect_url?: string; // URL to redirect user after consent submission
+  email?: string; // Optional: user email to be added to user_details
+  phone?: string; // Optional: user phone to be added to user_details
 }
 
 /**

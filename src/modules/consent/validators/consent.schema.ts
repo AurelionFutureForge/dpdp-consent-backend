@@ -18,6 +18,8 @@ export const InitiateConsentSchema = z.object({
     metadata: z.record(z.any()).optional(),
     language: z.string().min(2).max(5).default("en"),
     redirect_url: z.string().url("Invalid redirect URL").optional(),
+    email: z.string().email("Invalid email format").optional(),
+    phone: z.string().optional(),
   }),
 }).transform(({ body }) => body);
 
