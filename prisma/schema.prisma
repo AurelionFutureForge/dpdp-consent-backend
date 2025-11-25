@@ -82,8 +82,8 @@ enum SubmissionStatus {
 model DataPrincipal {
   data_principal_id String  @id @default(uuid())
   external_id       String? @unique // Client system ID
-  email             String? @unique
-  phone             String? @unique
+  email             String? 
+  phone             String? 
   language          String  @default("en")
 
   // Lifecycle
