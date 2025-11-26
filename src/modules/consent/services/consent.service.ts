@@ -13,7 +13,7 @@ import { sendNotification } from "@/modules/notification/services/notification.s
 /**
  * Step 1: Initiate Consent Request (Data Fiduciary initiates)
  * POST /api/v1/consents/initiate
- * 
+ *
  * @param {ConsentTypes.InitiateConsentInput} input - Consent initiation data
  * @returns {Promise<ConsentTypes.ApiResponse<ConsentTypes.InitiateConsentResponse>>}
  */
@@ -86,7 +86,7 @@ export const initiateConsent = async (
       if (input.phone) {
         updateData.phone = input.phone;
       }
-      
+
       if (Object.keys(updateData).length > 0) {
         principal = await prisma.dataPrincipal.update({
           where: { data_principal_id: principal.data_principal_id },
@@ -205,7 +205,7 @@ export const initiateConsent = async (
 /**
  * Step 5-7: Get Consent Notice (Data Principal views consent notice)
  * GET /consents/:cms_request_id
- * 
+ *
  * @param {string} cms_request_id - Consent request ID
  * @param {string} language - Language code
  * @returns {Promise<ConsentTypes.ApiResponse<ConsentTypes.ConsentNoticeData>>}
@@ -296,14 +296,14 @@ export const getConsentNotice = async (
 
     // ✅ Group purposes by category
     const purposesByCategoryMap = new Map<string | null, ConsentTypes.ConsentPurposeDetail[]>();
-    
+
     purposeDetails.forEach(purpose => {
       const categoryId = purpose.category?.purpose_category_id || null;
-      
+
       if (!purposesByCategoryMap.has(categoryId)) {
         purposesByCategoryMap.set(categoryId, []);
       }
-      
+
       purposesByCategoryMap.get(categoryId)!.push(purpose);
     });
 
@@ -312,7 +312,7 @@ export const getConsentNotice = async (
       // Find category name from first purpose in this category
       const firstPurpose = purposes[0];
       const categoryName = firstPurpose.category?.name || null;
-      
+
       return {
         category_id: categoryId,
         category_name: categoryName,
@@ -345,7 +345,7 @@ export const getConsentNotice = async (
 
     // ✅ Get redirect URL: Use metadata.redirect_url, or fallback to DataFiduciary's active platform submission URL
     let redirectUrl = metadata?.redirect_url;
-    
+
     if (!redirectUrl) {
       // Fetch active (APPROVED) platform submission with WEBSITE type
       const activePlatform = await prisma.platformSubmission.findFirst({
@@ -425,7 +425,7 @@ export const getConsentNotice = async (
         },
         valid_until: consentRequest.expires_at!,
         mandatory_purposes: mandatoryPurposes,
-        redirect_url: redirectUrl || undefined, 
+        redirect_url: redirectUrl || undefined,
       },
     };
   } catch (error) {
@@ -437,7 +437,7 @@ export const getConsentNotice = async (
 /**
  * Step 8-11: Submit Consent (Data Principal submits consent)
  * POST /api/v1/consents/submit
- * 
+ *
  * @param {ConsentTypes.SubmitConsentInput} input - Consent submission data
  * @returns {Promise<ConsentTypes.ApiResponse<ConsentTypes.SubmitConsentResponse>>}
  */
@@ -686,7 +686,7 @@ export const submitConsent = async (
     // ✅ Prepare redirect URL with consent status
     // Use metadata.redirect_url, or fallback to DataFiduciary's active platform submission URL
     let redirectUrl = metadata?.redirect_url;
-    
+
     if (!redirectUrl) {
       // Fetch active (APPROVED) platform submission with WEBSITE type
       const activePlatform = await prisma.platformSubmission.findFirst({
@@ -742,7 +742,7 @@ export const submitConsent = async (
 /**
  * Step 16-18: Validate Consent Artifact
  * GET /api/v1/consents/validate?artifact_id=ART_5001&data_fiduciary_id=xxx
- * 
+ *
  * @param {ConsentTypes.ValidateConsentInput} input - Validation input
  * @returns {Promise<ConsentTypes.ApiResponse<ConsentTypes.ValidateConsentResponse>>}
  */
@@ -776,7 +776,7 @@ export const validateConsent = async (
     if (!artifact) {
       // Step 11a: Log "Consent Invalid - Block Data Access"
       logger.warn(`[VALIDATION-FAILED] Consent Invalid - Block Data Access - Artifact: ${input.artifact_id}, Reason: NOT_FOUND`);
-      
+
       // NOTE: We DON'T log to ConsentValidation table here because the artifact doesn't exist
       // Foreign key constraint would fail. Only log validations for existing artifacts.
 
@@ -797,7 +797,7 @@ export const validateConsent = async (
     if (artifact.expires_at && artifact.expires_at < new Date()) {
       // Step 11a: Log "Consent Invalid - Block Data Access"
       logger.warn(`[VALIDATION-FAILED] Consent Invalid - Block Data Access - Artifact: ${input.artifact_id}, Reason: EXPIRED, Expired At: ${artifact.expires_at}`);
-      
+
       await prisma.consentValidation.create({
         data: {
           consent_artifact_id: input.artifact_id,
@@ -829,7 +829,7 @@ export const validateConsent = async (
     if (artifact.status === "WITHDRAWN") {
       // Step 11a: Log "Consent Invalid - Block Data Access"
       logger.warn(`[VALIDATION-FAILED] Consent Invalid - Block Data Access - Artifact: ${input.artifact_id}, Reason: WITHDRAWN, Withdrawn At: ${artifact.withdrawn_at}`);
-      
+
       await prisma.consentValidation.create({
         data: {
           consent_artifact_id: input.artifact_id,
@@ -860,7 +860,7 @@ export const validateConsent = async (
     // Step 6: Verify DF registration and purpose alignment
     if (input.purpose_id && artifact.purpose_id !== input.purpose_id) {
       logger.warn(`[VALIDATION-FAILED] Purpose Mismatch - Artifact: ${input.artifact_id}, Requested: ${input.purpose_id}, Actual: ${artifact.purpose_id}`);
-      
+
       await prisma.consentValidation.create({
         data: {
           consent_artifact_id: input.artifact_id,
@@ -895,7 +895,7 @@ export const validateConsent = async (
           version: "ART_5001",
         }))
         .digest("hex");
-      
+
       // Note: In production, you might want to fail validation on hash mismatch
       if (calculatedHash !== artifact.consent_text_hash) {
         logger.error(`[VALIDATION-WARNING] Hash mismatch detected for artifact: ${input.artifact_id}. Possible tampering.`);
@@ -1478,7 +1478,7 @@ export const getConsentHistory = async (
  * POST /api/v1/consents/renew
  * Supports both user-initiated and fiduciary-initiated renewal
  * Supports granular renewal (specific purposes)
- * 
+ *
  * @param {ConsentTypes.InitiateRenewalInput} input - Renewal initiation input
  * @returns {Promise<ConsentTypes.ApiResponse<ConsentTypes.InitiateRenewalResponse>>}
  */
@@ -1489,7 +1489,7 @@ export const initiateRenewal = async (
     const initiatedBy = input.initiated_by || "FIDUCIARY";
 
     console.log("input", input);
-    
+
     // Calculate new expiry date
     let extendByDays = 365; // Default 1 year
     if (input.extend_by_days) {
@@ -1544,7 +1544,7 @@ export const initiateRenewal = async (
       }
 
       artifacts = [artifact];
-    } 
+    }
     // Case 2: User-initiated renewal (by external_user_id or data_principal_id)
     else if (input.external_user_id || input.data_principal_id) {
       const where: any = {
@@ -1611,12 +1611,12 @@ export const initiateRenewal = async (
     let currentExpiresAt: Date | undefined;
     const requestedExpiresAt = new Date();
     const now = new Date();
-    
+
     for (const artifact of artifacts) {
       artifactIds.push(artifact.consent_artifact_id);
       // If consent is expired, use current date as base; otherwise use expires_at
-      const artifactExpiresAt = artifact.expires_at && artifact.expires_at >= now 
-        ? artifact.expires_at 
+      const artifactExpiresAt = artifact.expires_at && artifact.expires_at >= now
+        ? artifact.expires_at
         : now;
       if (!currentExpiresAt || artifactExpiresAt < currentExpiresAt) {
         currentExpiresAt = artifactExpiresAt;
@@ -1627,23 +1627,38 @@ export const initiateRenewal = async (
     requestedExpiresAt.setTime(currentExpiresAt!.getTime());
     requestedExpiresAt.setDate(requestedExpiresAt.getDate() + extendByDays);
 
-    // Store renewal request in metadata for each artifact
+    // Apply renewal to each artifact
     for (const artifact of artifacts) {
       const metadata = artifact.metadata as any;
+      const previousExpiresAt = artifact.expires_at;
+
+      // Calculate new expiry for this specific artifact
+      const artifactCurrentExpiry = artifact.expires_at && artifact.expires_at >= now
+        ? artifact.expires_at
+        : now;
+      const newExpiresAt = new Date(artifactCurrentExpiry);
+      newExpiresAt.setDate(newExpiresAt.getDate() + extendByDays);
+
+      // Update artifact with new expiry and store renewal metadata
       await prisma.consentArtifact.update({
         where: { consent_artifact_id: artifact.consent_artifact_id },
         data: {
+          expires_at: newExpiresAt,
+          status: "ACTIVE", // Reactivate if it was expired
           metadata: {
             ...metadata,
-            renewal_request: {
-              renewal_request_id: renewalRequestId,
-              requested_at: new Date(),
-              requested_extension_days: extendByDays,
-              requested_expires_at: requestedExpiresAt,
-              status: "PENDING",
-              initiated_by: initiatedBy,
-              purpose_ids: input.purpose_ids || [artifact.purpose_id],
-            },
+            renewal_history: [
+              ...(metadata?.renewal_history || []),
+              {
+                renewal_request_id: renewalRequestId,
+                renewed_at: new Date(),
+                extension_days: extendByDays,
+                previous_expires_at: previousExpiresAt,
+                new_expires_at: newExpiresAt,
+                initiated_by: initiatedBy,
+                purpose_ids: input.purpose_ids || [artifact.purpose_id],
+              }
+            ],
           },
         },
       });
@@ -1653,7 +1668,7 @@ export const initiateRenewal = async (
         data: {
           user_id: artifact.data_principal_id,
           consent_artifact_id: artifact.consent_artifact_id,
-          action: "CREATE",
+          action: "UPDATE",
           consent_status: "ACTIVE",
           initiator: initiatedBy === "USER" ? "USER" : "FIDUCIARY",
           audit_hash: generateAuditHash({
@@ -1663,7 +1678,9 @@ export const initiateRenewal = async (
           }),
           details: {
             renewal_request_id: renewalRequestId,
-            requested_extension_days: extendByDays,
+            extension_days: extendByDays,
+            previous_expires_at: previousExpiresAt,
+            new_expires_at: newExpiresAt,
             purpose_ids: input.purpose_ids || [artifact.purpose_id],
           },
         },
@@ -1680,11 +1697,11 @@ export const initiateRenewal = async (
       other_changes: `Extension period: ${extendByDays} days`,
     };
 
-    logger.info(`Consent Renewal Initiated - Request ID: ${renewalRequestId}, Artifacts: ${artifactIds.length}, Initiated by: ${initiatedBy}`);
+    logger.info(`Consent Renewal Completed - Request ID: ${renewalRequestId}, Artifacts: ${artifactIds.length}, Extended by: ${extendByDays} days, Initiated by: ${initiatedBy}`);
 
     return {
       success: true,
-      message: "Renewal request initiated successfully",
+      message: "Consent renewal completed successfully",
       data: {
         renewal_request_id: renewalRequestId,
         artifact_id: artifactIds.length === 1 ? artifactIds[0] : undefined,
@@ -1693,7 +1710,7 @@ export const initiateRenewal = async (
         current_expires_at: currentExpiresAt,
         requested_expires_at: requestedExpiresAt,
         transparency_info: transparencyInfo,
-        message: "Renewal request created. Awaiting user confirmation.",
+        message: `Consent renewed successfully. Extended by ${extendByDays} days. New expiry: ${requestedExpiresAt.toISOString()}`,
       },
     };
   } catch (error) {
