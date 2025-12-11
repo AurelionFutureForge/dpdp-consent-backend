@@ -1200,6 +1200,34 @@ export const withdrawConsent = async (
       logger.error("Webhook notification failed:", err);
     });
 
+    // Send notification to user (PII-FREE)
+    const principalData = await prisma.dataPrincipal.findUnique({
+      where: { data_principal_id: artifact.data_principal_id },
+      select: { external_id: true, language: true },
+    });
+
+    const purposeData = await prisma.purpose.findUnique({
+      where: { purpose_id: artifact.purpose_id },
+      select: { title: true },
+    });
+
+    sendNotification({
+      user_id: artifact.data_principal_id, // ✅ Only UUID reference
+      notification_type: 'consent_withdrawn',
+      channels: ['EMAIL', 'SMS'],
+      metadata: {
+        artifact_id: input.artifact_id,
+        fiduciary_name: artifact.fiduciary.name,
+        fiduciary_logo: artifact.fiduciary.logo_url || undefined,
+        purpose_titles: purposeData?.title ? [purposeData.title] : undefined,
+        external_id: principalData?.external_id || undefined,
+      },
+      language: principalData?.language || 'en',
+    }).catch(err => {
+      // Non-blocking: Log error but don't fail the withdrawal
+      logger.error("Failed to send withdrawal notification:", err);
+    });
+
     logger.info(`Consent withdrawn: ${input.artifact_id}`);
 
     return {
@@ -1700,6 +1728,25 @@ export const initiateRenewal = async (
     };
 
     logger.info(`Consent Renewal Completed - Request ID: ${renewalRequestId}, Artifacts: ${artifactIds.length}, Extended by: ${extendByDays} days, Initiated by: ${initiatedBy}`);
+
+    // Send notification to user (PII-FREE)
+    sendNotification({
+      user_id: firstArtifact.data_principal_id, // ✅ Only UUID reference
+      notification_type: 'consent_renewed',
+      channels: ['EMAIL', 'SMS'],
+      metadata: {
+        artifact_id: artifactIds.length === 1 ? artifactIds[0] : undefined,
+        fiduciary_name: firstArtifact.fiduciary.name,
+        fiduciary_logo: firstArtifact.fiduciary.logo_url || undefined,
+        purpose_titles: artifacts.map(a => a.purpose_version.purpose.title),
+        expires_at: requestedExpiresAt,
+        external_id: firstArtifact.principal.external_id || undefined,
+      },
+      language: firstArtifact.principal.language || 'en',
+    }).catch(err => {
+      // Non-blocking: Log error but don't fail the renewal
+      logger.error("Failed to send renewal notification:", err);
+    });
 
     return {
       success: true,
