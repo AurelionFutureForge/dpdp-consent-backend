@@ -675,7 +675,9 @@ export const submitConsent = async (
       metadata: {
         artifact_id: validArtifacts[0]!.consent_artifact_id,
         fiduciary_name: consentRequest.fiduciary.name,
+        fiduciary_logo: consentRequest.fiduciary.logo_url || undefined,
         purpose_titles: validArtifacts.map(a => a!.purpose_version.title),
+        external_id: consentRequest.principal.external_id || undefined,
       },
       language: input.language_code,
     }).catch(err => {

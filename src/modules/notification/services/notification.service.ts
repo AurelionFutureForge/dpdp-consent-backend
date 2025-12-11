@@ -44,9 +44,11 @@ export interface SendNotificationInput {
   metadata?: {
     artifact_id?: string;
     fiduciary_name?: string;
+    fiduciary_logo?: string;
     purpose_titles?: string[];
     expires_at?: Date;
     action_url?: string;
+    external_id?: string; // For consent dashboard URL
   };
   language?: string;
 }
@@ -111,9 +113,15 @@ export const sendNotification = async (
     }
 
     // Step 2: Build notification content (based on type)
+    // Include external_id for consent dashboard URL
+    const enrichedMetadata = {
+      ...input.metadata,
+      external_id: input.metadata?.external_id || principal.external_id,
+    };
+    
     const content = buildNotificationContent(
       input.notification_type,
-      input.metadata || {},
+      enrichedMetadata,
       input.language || principal.language || "en"
     );
 
@@ -252,6 +260,133 @@ export const sendNotification = async (
 };
 
 /**
+ * Generate HTML email template with consistent styling
+ */
+function generateEmailHTML(params: {
+  title: string;
+  heading: string;
+  message: string;
+  fiduciary_name?: string;
+  fiduciary_logo?: string;
+  artifact_id?: string;
+  purpose_titles?: string[];
+  expires_at?: Date;
+  external_id?: string;
+  showDashboardButton?: boolean;
+  additionalInfo?: { label: string; value: string }[];
+}): string {
+  const dashboardUrl = params.external_id 
+    ? `https://dpdp.aurelionfutureforge.com/my-consents/${params.external_id}`
+    : null;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${params.title}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7fa;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 0;">
+        <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+          
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 30px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600;">${params.heading}</h1>
+            </td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td style="padding: 40px;">
+              <p style="margin: 0 0 20px; color: #333333; font-size: 16px; line-height: 1.6;">
+                ${params.message}
+              </p>
+              
+              ${params.fiduciary_name ? `
+              <!-- Fiduciary Info Card -->
+              <div style="background-color: #f8f9fa; border-left: 4px solid #667eea; padding: 20px; margin: 20px 0; border-radius: 4px;">
+                ${params.fiduciary_logo ? `
+                <img src="${params.fiduciary_logo}" alt="${params.fiduciary_name}" style="max-width: 150px; max-height: 50px; margin-bottom: 15px;">
+                ` : ''}
+                <h3 style="margin: 0 0 15px; color: #333333; font-size: 18px; font-weight: 600;">
+                  Data Fiduciary Information
+                </h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #666666; font-size: 14px; font-weight: 600;">Organization:</td>
+                    <td style="padding: 8px 0; color: #333333; font-size: 14px;">${params.fiduciary_name}</td>
+                  </tr>
+                  ${params.artifact_id ? `
+                  <tr>
+                    <td style="padding: 8px 0; color: #666666; font-size: 14px; font-weight: 600;">Reference ID:</td>
+                    <td style="padding: 8px 0; color: #333333; font-size: 14px; font-family: monospace;">${params.artifact_id}</td>
+                  </tr>
+                  ` : ''}
+                  ${params.purpose_titles && params.purpose_titles.length > 0 ? `
+                  <tr>
+                    <td style="padding: 8px 0; color: #666666; font-size: 14px; font-weight: 600; vertical-align: top;">Purposes:</td>
+                    <td style="padding: 8px 0; color: #333333; font-size: 14px;">
+                      ${params.purpose_titles.map(p => `<span style="display: inline-block; background-color: #e7eaf6; color: #667eea; padding: 4px 12px; margin: 2px 4px 2px 0; border-radius: 12px; font-size: 13px;">${p}</span>`).join('')}
+                    </td>
+                  </tr>
+                  ` : ''}
+                  ${params.expires_at ? `
+                  <tr>
+                    <td style="padding: 8px 0; color: #666666; font-size: 14px; font-weight: 600;">Expires On:</td>
+                    <td style="padding: 8px 0; color: #333333; font-size: 14px;">${new Date(params.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+                  </tr>
+                  ` : ''}
+                  ${params.additionalInfo ? params.additionalInfo.map(info => `
+                  <tr>
+                    <td style="padding: 8px 0; color: #666666; font-size: 14px; font-weight: 600;">${info.label}:</td>
+                    <td style="padding: 8px 0; color: #333333; font-size: 14px;">${info.value}</td>
+                  </tr>
+                  `).join('') : ''}
+                </table>
+              </div>
+              ` : ''}
+              
+              ${dashboardUrl && params.showDashboardButton !== false ? `
+              <!-- Call to Action -->
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${dashboardUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 6px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);">
+                  View My Consent Dashboard
+                </a>
+              </div>
+              <p style="text-align: center; color: #666666; font-size: 13px; margin-top: 15px;">
+                Or copy and paste this URL into your browser:<br>
+                <a href="${dashboardUrl}" style="color: #667eea; word-break: break-all;">${dashboardUrl}</a>
+              </p>
+              ` : ''}
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px 40px; background-color: #f8f9fa; border-radius: 0 0 8px 8px; text-align: center; border-top: 1px solid #e9ecef;">
+              <p style="margin: 0 0 10px; color: #666666; font-size: 14px;">
+                This is an automated notification from your Data Consent Management System.
+              </p>
+              <p style="margin: 0; color: #999999; font-size: 12px;">
+                If you have any questions, please contact the Data Fiduciary organization directly.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
+
+/**
  * Build notification content based on type
  */
 function buildNotificationContent(
@@ -274,7 +409,17 @@ function buildNotificationContent(
       return {
         subject: translations.consent_granted_subject,
         body: `Dear User,\n\nYour consent for ${metadata.purpose_titles?.join(', ') || 'data processing'} has been successfully recorded.\n\nArtifact ID: ${metadata.artifact_id}\nFiduciary: ${metadata.fiduciary_name}\n\nThank you.`,
-        html: `<h2>Consent Granted</h2><p>Your consent has been recorded.</p>`,
+        html: generateEmailHTML({
+          title: translations.consent_granted_subject,
+          heading: '✓ Consent Recorded Successfully',
+          message: 'Your consent has been successfully recorded. You can view and manage all your consents from your dashboard.',
+          fiduciary_name: metadata.fiduciary_name,
+          fiduciary_logo: metadata.fiduciary_logo,
+          artifact_id: metadata.artifact_id,
+          purpose_titles: metadata.purpose_titles,
+          external_id: metadata.external_id,
+          showDashboardButton: true,
+        }),
         sms_text: `Your consent for ${metadata.fiduciary_name} has been recorded. Ref: ${metadata.artifact_id}`,
         push_title: translations.consent_granted_subject,
         push_body: `Consent recorded for ${metadata.fiduciary_name}`,
@@ -284,7 +429,17 @@ function buildNotificationContent(
       return {
         subject: translations.consent_withdrawn_subject,
         body: `Dear User,\n\nYour consent has been withdrawn.\n\nArtifact ID: ${metadata.artifact_id}\n\nThank you.`,
-        html: `<h2>Consent Withdrawn</h2><p>Your consent has been withdrawn.</p>`,
+        html: generateEmailHTML({
+          title: translations.consent_withdrawn_subject,
+          heading: 'Consent Withdrawn',
+          message: 'Your consent has been withdrawn as requested. The organization will no longer process your data under this consent.',
+          fiduciary_name: metadata.fiduciary_name,
+          fiduciary_logo: metadata.fiduciary_logo,
+          artifact_id: metadata.artifact_id,
+          purpose_titles: metadata.purpose_titles,
+          external_id: metadata.external_id,
+          showDashboardButton: true,
+        }),
         sms_text: `Your consent has been withdrawn. Ref: ${metadata.artifact_id}`,
         push_title: translations.consent_withdrawn_subject,
         push_body: 'Your consent has been withdrawn',
@@ -294,7 +449,18 @@ function buildNotificationContent(
       return {
         subject: translations.consent_expired_subject,
         body: `Dear User,\n\nYour consent has expired.\n\nArtifact ID: ${metadata.artifact_id}\nExpired on: ${metadata.expires_at}\n\nPlease renew if you wish to continue.`,
-        html: `<h2>Consent Expired</h2><p>Your consent has expired. Please renew.</p>`,
+        html: generateEmailHTML({
+          title: translations.consent_expired_subject,
+          heading: '⚠ Consent Expired',
+          message: 'Your consent has expired. If you wish to continue allowing the organization to process your data, please renew your consent.',
+          fiduciary_name: metadata.fiduciary_name,
+          fiduciary_logo: metadata.fiduciary_logo,
+          artifact_id: metadata.artifact_id,
+          purpose_titles: metadata.purpose_titles,
+          expires_at: metadata.expires_at,
+          external_id: metadata.external_id,
+          showDashboardButton: true,
+        }),
         sms_text: `Your consent for ${metadata.fiduciary_name} has expired. Please renew.`,
         push_title: translations.consent_expired_subject,
         push_body: 'Your consent has expired. Tap to renew.',
@@ -304,8 +470,19 @@ function buildNotificationContent(
       return {
         subject: translations.consent_renewal_reminder_subject,
         body: `Dear User,\n\nYour consent will expire soon.\n\nArtifact ID: ${metadata.artifact_id}\nExpires on: ${metadata.expires_at}\n\nRenew now: ${metadata.action_url}`,
-        html: `<h2>Consent Expiring Soon</h2><p>Renew your consent now.</p><a href="${metadata.action_url}">Renew Now</a>`,
-        sms_text: `Your consent expires soon. Renew at: ${metadata.action_url}`,
+        html: generateEmailHTML({
+          title: translations.consent_renewal_reminder_subject,
+          heading: '🔔 Consent Expiring Soon',
+          message: 'Your consent is about to expire. Please review and renew your consent to continue allowing the organization to process your data.',
+          fiduciary_name: metadata.fiduciary_name,
+          fiduciary_logo: metadata.fiduciary_logo,
+          artifact_id: metadata.artifact_id,
+          purpose_titles: metadata.purpose_titles,
+          expires_at: metadata.expires_at,
+          external_id: metadata.external_id,
+          showDashboardButton: true,
+        }),
+        sms_text: `Your consent expires soon. Renew at: ${metadata.action_url || `https://dpdp.aurelionfutureforge.com/my-consents/${metadata.external_id}`}`,
         push_title: translations.consent_renewal_reminder_subject,
         push_body: 'Your consent expires soon. Tap to renew.',
       };
@@ -314,7 +491,17 @@ function buildNotificationContent(
       return {
         subject: translations.consent_updated_subject,
         body: `Dear User,\n\nYour consent has been updated.\n\nArtifact ID: ${metadata.artifact_id}\n\nThank you.`,
-        html: `<h2>Consent Updated</h2><p>Your consent has been updated.</p>`,
+        html: generateEmailHTML({
+          title: translations.consent_updated_subject,
+          heading: 'Consent Updated',
+          message: 'Your consent preferences have been updated successfully.',
+          fiduciary_name: metadata.fiduciary_name,
+          fiduciary_logo: metadata.fiduciary_logo,
+          artifact_id: metadata.artifact_id,
+          purpose_titles: metadata.purpose_titles,
+          external_id: metadata.external_id,
+          showDashboardButton: true,
+        }),
         sms_text: `Your consent has been updated. Ref: ${metadata.artifact_id}`,
         push_title: translations.consent_updated_subject,
         push_body: 'Your consent has been updated',
@@ -324,7 +511,18 @@ function buildNotificationContent(
       return {
         subject: translations.consent_renewed_subject,
         body: `Dear User,\n\nYour consent has been successfully renewed.\n\nArtifact ID: ${metadata.artifact_id}\nFiduciary: ${metadata.fiduciary_name}\nPurposes: ${metadata.purpose_titles?.join(', ') || 'N/A'}\nNew Expiry: ${metadata.expires_at ? new Date(metadata.expires_at).toLocaleDateString() : 'N/A'}\n\nThank you.`,
-        html: `<h2>Consent Renewed</h2><p>Your consent has been successfully renewed.</p><p>New expiry date: ${metadata.expires_at ? new Date(metadata.expires_at).toLocaleDateString() : 'N/A'}</p>`,
+        html: generateEmailHTML({
+          title: translations.consent_renewed_subject,
+          heading: '✓ Consent Renewed Successfully',
+          message: 'Your consent has been successfully renewed. The organization can continue processing your data under the renewed consent.',
+          fiduciary_name: metadata.fiduciary_name,
+          fiduciary_logo: metadata.fiduciary_logo,
+          artifact_id: metadata.artifact_id,
+          purpose_titles: metadata.purpose_titles,
+          expires_at: metadata.expires_at,
+          external_id: metadata.external_id,
+          showDashboardButton: true,
+        }),
         sms_text: `Your consent for ${metadata.fiduciary_name} has been renewed. New expiry: ${metadata.expires_at ? new Date(metadata.expires_at).toLocaleDateString() : 'N/A'}`,
         push_title: translations.consent_renewed_subject,
         push_body: `Consent renewed for ${metadata.fiduciary_name}`,
@@ -334,7 +532,13 @@ function buildNotificationContent(
       return {
         subject: 'Notification',
         body: 'You have a new notification.',
-        html: '<p>You have a new notification.</p>',
+        html: generateEmailHTML({
+          title: 'Notification',
+          heading: 'Notification',
+          message: 'You have a new notification regarding your data consent.',
+          external_id: metadata.external_id,
+          showDashboardButton: true,
+        }),
         sms_text: 'You have a new notification.',
         push_title: 'Notification',
         push_body: 'You have a new notification.',
