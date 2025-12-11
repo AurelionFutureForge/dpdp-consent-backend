@@ -15,6 +15,8 @@
 import prisma from "prisma/client/prismaClient";
 import logger from "@/modules/common/utils/logger";
 import crypto from "crypto";
+import { Resend } from "resend";
+import { env } from "@/config/env/env";
 
 /**
  * Notification Types
@@ -367,7 +369,7 @@ function getTranslations(language: string): Record<string, string> {
 }
 
 /**
- * Send email notification via SendGrid/AWS SES
+ * Send email notification via Resend
  */
 async function sendEmailNotification(
   to: string,
@@ -375,32 +377,29 @@ async function sendEmailNotification(
   body: string,
   html: string
 ): Promise<void> {
-  // TODO: Integrate with SendGrid or AWS SES
-  
-  // Example with SendGrid (install: npm install @sendgrid/mail)
-  /*
-  import sgMail from '@sendgrid/mail';
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
-  
-  const msg = {
-    to,
-    from: process.env.SENDER_EMAIL!,
-    subject,
-    text: body,
-    html,
-  };
-  
-  await sgMail.send(msg);
-  */
+  try {
+    // Initialize Resend client
+    const resend = new Resend(env.RESEND_API_KEY);
+    
+    // Send email via Resend
+    const { data, error } = await resend.emails.send({
+      from: 'no-reply@aurelionnext.com',
+      to: [to],
+      subject: subject,
+      text: body,
+      html: html,
+    });
 
-  // For now, just log (replace with actual email service)
-  logger.info(`[EMAIL] Sending to ${maskEmail(to)}: ${subject}`);
-  
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  // In production, throw error if email fails
-  // throw new Error("Email service unavailable");
+    if (error) {
+      logger.error(`[EMAIL] Resend error for ${maskEmail(to)}:`, error);
+      throw new Error(`Email service error: ${error.message}`);
+    }
+
+    logger.info(`[EMAIL] Successfully sent to ${maskEmail(to)}: ${subject} (ID: ${data?.id})`);
+  } catch (error: any) {
+    logger.error(`[EMAIL] Failed to send to ${maskEmail(to)}:`, error);
+    throw new Error(`Email delivery failed: ${error.message}`);
+  }
 }
 
 /**
