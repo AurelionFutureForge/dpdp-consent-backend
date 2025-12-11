@@ -16,6 +16,10 @@ const envSchema = z.object({
   
   // DPDP specific configs
   CORS_ORIGIN: z.string().default('*'),
+  
+  // CRON Job Configuration
+  CONSENT_EXPIRY_REMINDER_DAYS: z.coerce.number().default(7),
+  CRON_TIMEZONE: z.string().default('Asia/Kolkata'),
 });
 
 const _env = envSchema.safeParse(process.env);
